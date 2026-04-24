@@ -1,0 +1,14 @@
+requests
+pandas
+numpy
+gdeltdoc
+scikit-learn
+matplotlib
+seaborn
+jupyter
+ipykernel
+python-dotenv
+torch
+pytorch-lightning
+pytorch-forecasting
+transformers
