@@ -47,7 +47,11 @@ export function MarketPredictPanel() {
         }
       } catch (e) {
         if (!cancelled) {
-          setMarketsError(e instanceof Error ? e.message : "No se pudieron cargar los mercados.");
+          setMarketsError(
+            e instanceof Error
+              ? e.message
+              : "No se pudieron cargar los mercados.",
+          );
           setMarkets([]);
         }
       } finally {
@@ -65,7 +69,8 @@ export function MarketPredictPanel() {
     if (!q) return markets;
     return markets.filter(
       (m) =>
-        m.question.toLowerCase().includes(q) || m.slug.toLowerCase().includes(q)
+        m.question.toLowerCase().includes(q) ||
+        m.slug.toLowerCase().includes(q),
     );
   }, [markets, query]);
 
@@ -119,9 +124,7 @@ export function MarketPredictPanel() {
 
       <div className={styles.card}>
         <span className={styles.label}>Mercados activos</span>
-        {marketsLoading && (
-          <p className={styles.status}>Cargando mercados…</p>
-        )}
+        {marketsLoading && <p className={styles.status}>Cargando mercados…</p>}
         {marketsError && (
           <p className={`${styles.status} ${styles.error}`}>{marketsError}</p>
         )}
@@ -130,10 +133,15 @@ export function MarketPredictPanel() {
         )}
         {!marketsLoading && !marketsError && filtered.length > 0 && (
           <div className={styles.listWrap}>
-            <ul className={styles.list} role="listbox" aria-label="Lista de mercados">
+            <ul
+              className={styles.list}
+              role="listbox"
+              aria-label="Lista de mercados"
+            >
               {filtered.map((m, idx) => {
                 const isSel =
-                  selected?.slug === m.slug && selected?.question === m.question;
+                  selected?.slug === m.slug &&
+                  selected?.question === m.question;
                 return (
                   <li key={`${m.id ?? m.slug}-${idx}`}>
                     <button
@@ -144,7 +152,9 @@ export function MarketPredictPanel() {
                       onClick={() => setSelected(m)}
                     >
                       {m.question || "(Sin título)"}
-                      {m.slug ? <span className={styles.slug}>{m.slug}</span> : null}
+                      {m.slug ? (
+                        <span className={styles.slug}>{m.slug}</span>
+                      ) : null}
                     </button>
                   </li>
                 );
@@ -163,9 +173,13 @@ export function MarketPredictPanel() {
             <dt>Slug</dt>
             <dd>{selected.slug || "—"}</dd>
             <dt>Volumen</dt>
-            <dd>{selected.volume.toLocaleString("es")}</dd>
+            <dd>{selected.volume.toLocaleString("en")}</dd>
             <dt>Tokens CLOB</dt>
-            <dd>{selected.clobTokenIds.length ? selected.clobTokenIds.join(", ") : "—"}</dd>
+            <dd>
+              {selected.clobTokenIds.length
+                ? selected.clobTokenIds.join(", ")
+                : "—"}
+            </dd>
           </dl>
         ) : (
           <p className={styles.status}>Elige un mercado de la lista.</p>
