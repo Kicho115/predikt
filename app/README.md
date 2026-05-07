@@ -1,36 +1,49 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Predikt (web)
 
-## Getting Started
+Interfaz Next.js para elegir un mercado **activo** de Polymarket y enviar su payload al servicio de inferencia.
 
-First, run the development server:
+## Desarrollo
+
+Desde esta carpeta (`app/`):
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Abre [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Variables de entorno
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Copia `.env.example` a `.env.local` y define:
 
-## Learn More
+| Variable | Descripción |
+|----------|-------------|
+| `INFERENCE_API_URL` | URL absoluta del POST de inferencia (p. ej. `http://127.0.0.1:8000/predict`). Si falta, `/api/predict` responde **501** con un mensaje claro. |
+| `INFERENCE_API_KEY` | Opcional. Si existe, se envía `Authorization: Bearer …` al backend. |
 
-To learn more about Next.js, take a look at the following resources:
+Los navegadores solo hablan con Next (`/api/markets`, `/api/predict`). Las llamadas a Polymarket y a inferencia salen del servidor.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Contrato JSON (inferencia)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+El cliente envía un POST a `/api/predict` con:
 
-## Deploy on Vercel
+```json
+{
+  "market": {
+    "id": "… | null",
+    "slug": "…",
+    "question": "…",
+    "volume": 0,
+    "clobTokenIds": ["…"],
+    "conditionId": "… | null"
+  }
+}
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Next valida esta forma y reenvía el mismo JSON a `INFERENCE_API_URL`.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Rutas internas
+
+- `GET /api/markets` — Lista mercados con `active=true` y `closed=false` vía [Gamma API](https://gamma-api.polymarket.com). Query: `limit`, `offset`, `search` (opcional).
+- `POST /api/predict` — Proxy al backend de inferencia.
