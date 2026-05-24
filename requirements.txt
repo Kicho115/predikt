@@ -1,7 +1,6 @@
 requests
 pandas
 numpy
-gdeltdoc
 scikit-learn
 matplotlib
 seaborn
@@ -11,4 +10,3 @@ python-dotenv
 torch
 pytorch-lightning
 pytorch-forecasting
-transformers

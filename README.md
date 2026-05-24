@@ -1,7 +1,7 @@
 # Predikt
 
 Sistema de predicción de movimientos en mercados de predicción descentralizados (Polymarket)
-combinando datos endógenos de precios con análisis de noticias globales (GDELT).
+usando señales endógenas de precios y features técnicas.
 
 ## Estructura del proyecto
 
@@ -11,13 +11,12 @@ predikt/
 │   ├── raw/           # CSV tal como llegan de las APIs (ignorado en git)
 │   └── processed/     # Features procesadas, modelos .pkl (ignorado en git)
 ├── notebooks/
-│   ├── 01_data_collection.ipynb   # Descarga Polymarket + GDELT
+│   ├── 01_data_collection.ipynb   # Descarga Polymarket (Gamma + CLOB)
 │   ├── 02_eda.ipynb               # Análisis exploratorio
 │   ├── 03_feature_engineering.ipynb  # Construcción de features
 │   └── 04_baseline_model.ipynb    # Modelos clásicos de ML + calibración
 ├── src/
 │   ├── polymarket.py   # Cliente Polymarket API (Gamma + CLOB)
-│   ├── gdelt_news.py   # Cliente GDELT Doc 2.0 API
 │   └── features.py     # Ingeniería de características
 └── requirements.txt
 ```
@@ -40,21 +39,18 @@ python -m ipykernel install --user --name predikt --display-name "Python 3 (pred
 
 Abrir los notebooks en Jupyter y ejecutar en orden con el kernel **Python 3 (predikt)**:
 
-1. `01_data_collection.ipynb` — descarga precios de Polymarket y noticias de GDELT
+1. `01_data_collection.ipynb` — descarga precios de Polymarket
 2. `02_eda.ipynb` — visualización y análisis exploratorio
 3. `03_feature_engineering.ipynb` — construcción de la matriz de features
 4. `04_baseline_model.ipynb` — entrenamiento y comparación de modelos baseline
+5. `deep-learning/05_lstm_baseline.ipynb` — baseline LSTM con features de precio
 
 ## Fuentes de datos
 
-| Dataset            | Fuente                                    | Acceso                             |
-| ------------------ | ----------------------------------------- | ---------------------------------- |
-| Precios Polymarket | CLOB API (`clob.polymarket.com`)          | Público, sin auth                  |
-| Lista de mercados  | Gamma API (`gamma-api.polymarket.com`)    | Público, sin auth                  |
-| Noticias globales  | GDELT Doc 2.0 API (`gdeltdoc` Python lib) | Público, sin auth, últimos 3 meses |
-
-> Para datos GDELT de más de 3 meses, usar BigQuery (capa gratuita 1 TB/mes):
-> `SELECT * FROM \`gdelt-bq.gdeltv2.gkg\` WHERE DATE(DATE) BETWEEN '2024-01-01' AND '2026-04-23'`
+| Dataset            | Fuente                                 | Acceso            |
+| ------------------ | -------------------------------------- | ----------------- |
+| Precios Polymarket | CLOB API (`clob.polymarket.com`)       | Público, sin auth |
+| Lista de mercados  | Gamma API (`gamma-api.polymarket.com`) | Público, sin auth |
 
 ## Modelos implementados
 
@@ -67,7 +63,7 @@ Abrir los notebooks en Jupyter y ejecutar en orden con el kernel **Python 3 (pre
 
 ### Siguiente avance (Deep Learning)
 
-- DistilBERT (`transformers`) para embeddings semánticos de noticias
+- LSTM baseline sobre series de precios (ver notebook 05)
 - Temporal Fusion Transformer (`pytorch-forecasting`) para la serie temporal
 
 ## Métricas de evaluación
