@@ -1,0 +1,102 @@
+.shell {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 1.75rem 2.5rem 2.5rem;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.header {
+  padding-bottom: 0.25rem;
+}
+
+.headerMain {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.brand {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+}
+
+.logoBadge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: #2e5cff;
+  color: #fff;
+  flex-shrink: 0;
+  box-shadow: 0 4px 16px rgba(46, 92, 255, 0.25);
+}
+
+.logoBadge svg {
+  width: 22px;
+  height: 22px;
+}
+
+.title {
+  font-family: "Garet", var(--font-geist-sans), system-ui, sans-serif;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: #0a0e1a;
+  line-height: 1.2;
+  margin-bottom: 0.35rem;
+}
+
+.subtitle {
+  font-family: "Garet", var(--font-geist-sans), system-ui, sans-serif;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: rgba(10, 14, 26, 0.62);
+  max-width: 480px;
+}
+
+.code {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.85em;
+  color: #2e5cff;
+  background: rgba(46, 92, 255, 0.08);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+
+.backBtn {
+  padding: 0.6rem 1.2rem;
+  font-family: "Garet", var(--font-geist-sans), system-ui, sans-serif;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #0a0e1a;
+  background: #fff;
+  border: 1.5px solid rgba(10, 14, 26, 0.85);
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s, transform 0.15s;
+}
+
+.backBtn:hover {
+  background: rgba(255, 255, 255, 0.9);
+  transform: translateY(-1px);
+}
+
+@media (max-width: 768px) {
+  .shell {
+    padding: 1.25rem 1.25rem 2rem;
+  }
+
+  .headerMain {
+    flex-direction: column;
+  }
+}
