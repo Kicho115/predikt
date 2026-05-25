@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
   const payload = body as PredictRequestBody | null;
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "Body debe ser { market: { slug, question, volume, clobTokenIds, id, conditionId } }",
+          "Body must be { market: { slug, question, volume, clobTokenIds, id, conditionId } }",
       },
       { status: 400 }
     );
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "INFERENCE_API_URL no está configurada. Añádela en .env.local para habilitar inferencia.",
+          "INFERENCE_API_URL is not configured. Add it to .env.local to enable inference.",
         code: "INFERENCE_NOT_CONFIGURED",
       },
       { status: 501 }
