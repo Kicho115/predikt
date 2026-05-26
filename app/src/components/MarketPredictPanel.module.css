@@ -1,329 +1,693 @@
-.panel {
-  display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
-  gap: 1rem;
-  align-items: start;
-  min-height: calc(100vh - 11rem);
-}
-
-.leftColumn,
-.rightColumn {
+.wrapper {
+  --font-sans: var(--font-dm-sans), "Garet", system-ui, sans-serif;
+  --dash-blue: #1f5bff;
+  --dash-blue-deep: #1147ff;
+  --dash-green: #22c55e;
+  --card-bg: #ffffff;
+  --card-radius: 20px;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  min-height: 0;
-}
-
-.card {
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 1.25rem 1.35rem;
-  box-shadow: 0 4px 20px rgba(46, 92, 255, 0.05);
-}
-
-.cardMarkets {
+  gap: 1.35rem;
   flex: 1;
-  display: flex;
-  flex-direction: column;
   min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
 }
 
-.cardHeader {
+/* ── Header: logo | search | sign out ── */
+.dashboardHeader {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1.25rem 1.75rem;
+  flex-shrink: 0;
+}
+
+.brandLogo {
+  display: block;
+  width: auto !important;
+  height: 5rem;
+  max-height: none;
+  object-fit: contain;
+  flex-shrink: 0;
+  /* White logo on black asset — blend black away on dark gradient */
+  mix-blend-mode: screen;
+}
+
+.signOutBtn {
+  padding: 0.65rem 1.5rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  color: #000033;
+  background: #ffffff;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.2s;
+  white-space: nowrap;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.signOutBtn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+/* ── Search ── */
+.searchBar {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-bottom: 0.85rem;
+  width: 100%;
+  min-width: 0;
+  max-width: 720px;
+  justify-self: center;
+  padding: 0.35rem 0.4rem 0.35rem 1.25rem;
+  background: var(--card-bg);
+  border-radius: 999px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  height: 3rem;
 }
 
-.cardIcon {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: rgba(46, 92, 255, 0.1);
-  border: 1px solid var(--border);
+.searchInput {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem 0.5rem;
+  font-size: 0.9375rem;
+  font-family: var(--font-sans);
+  color: #0a0e1a;
+  background: transparent;
+  border: none;
+  outline: none;
+}
+
+.searchInput::placeholder {
+  color: rgba(10, 14, 26, 0.45);
+}
+
+.searchInput:disabled {
+  opacity: 0.55;
+}
+
+.searchBtn {
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: #2e5cff;
+  width: 2.35rem;
+  height: 2.35rem;
+  border: none;
+  border-radius: 50%;
+  background: var(--dash-blue);
+  color: #fff;
+  cursor: pointer;
+  transition: transform 0.15s, background 0.2s;
 }
 
-.cardIcon svg {
-  width: 14px;
-  height: 14px;
+.searchBtn svg {
+  width: 1.1rem;
+  height: 1.1rem;
 }
 
-.label {
-  display: block;
-  font-family: var(--font-geist-mono), ui-monospace, monospace;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: #2e5cff;
+.searchBtn:hover {
+  background: var(--dash-blue-deep);
+  transform: scale(1.04);
 }
 
-.searchWrap {
-  position: relative;
-}
-
-.searchIcon {
-  position: absolute;
-  left: 0.85rem;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--muted);
-  pointer-events: none;
-  display: flex;
-}
-
-.searchIcon svg {
-  width: 16px;
-  height: 16px;
-}
-
-.search {
-  width: 100%;
-  padding: 0.7rem 0.85rem 0.7rem 2.5rem;
-  font-size: 0.9375rem;
-  font-family: "Garet", var(--font-geist-sans), system-ui, sans-serif;
-  color: var(--foreground);
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-.search::placeholder {
-  color: var(--muted);
-}
-
-.search:focus {
-  outline: none;
-  border-color: var(--pm-blue);
-  box-shadow: 0 0 0 3px rgba(46, 92, 255, 0.12);
-}
-
-.search:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.listWrap {
+/* ── Main grid: markets | detail card ── */
+.mainGrid {
+  display: grid;
+  grid-template-columns: minmax(360px, 38%) 1fr;
+  gap: 1.5rem;
+  align-items: stretch;
   flex: 1;
-  min-height: 280px;
-  max-height: calc(100vh - 16rem);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sectionTitle {
+  font-family: var(--font-sans);
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #fff;
+  margin: 0 0 0.85rem;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  flex-shrink: 0;
+}
+
+.sectionTitleSpacer {
+  flex-shrink: 0;
+  height: 1.875rem;
+  margin: 0 0 0.85rem;
+}
+
+/* ── Panel columns (equal height) ── */
+.panelCol {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.marketsCard {
+  background: var(--card-bg);
+  border-radius: var(--card-radius);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.marketsScrollArea {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+}
+
+.marketsListScroll {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: #fff;
-  scrollbar-width: thin;
-  scrollbar-color: var(--pm-blue) transparent;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
-.listWrap::-webkit-scrollbar {
-  width: 6px;
+.marketsListScroll::-webkit-scrollbar {
+  display: none;
 }
 
-.listWrap::-webkit-scrollbar-thumb {
-  background: var(--pm-blue);
-  border-radius: 3px;
+.scrollRail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  width: 1.375rem;
+  margin: 1.125rem 0.5rem 1.125rem 0.15rem;
+  padding: 0.3rem 0;
+  background: rgba(31, 91, 255, 0.12);
+  border-radius: 999px;
+  align-self: stretch;
 }
 
-.list {
+.scrollArrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: var(--dash-blue);
+  color: #fff;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.scrollArrow svg {
+  width: 0.65rem;
+  height: 0.45rem;
+}
+
+.scrollArrow:hover {
+  background: var(--dash-blue-deep);
+}
+
+.scrollArrow:active {
+  transform: scale(0.94);
+}
+
+.scrollRailTrack {
+  flex: 1;
+  width: 0.5rem;
+  min-height: 2.5rem;
+  margin: 0.25rem 0;
+  border-radius: 999px;
+  background: var(--dash-blue);
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.marketList {
   list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
-.row {
+.marketRow {
   width: 100%;
   text-align: left;
-  padding: 0.75rem 1rem;
-  font-size: 0.875rem;
-  line-height: 1.4;
-  font-family: "Garet", var(--font-geist-sans), system-ui, sans-serif;
-  color: var(--foreground);
+  padding: 1.1rem 1.2rem;
+  font-family: var(--font-sans);
   background: transparent;
   border: none;
-  border-bottom: 1px solid rgba(46, 92, 255, 0.06);
+  border-bottom: 1px solid rgba(10, 14, 26, 0.06);
   cursor: pointer;
   transition: background 0.15s;
 }
 
-.row:last-child {
+.marketRow:last-child {
   border-bottom: none;
 }
 
-.row:hover {
-  background: var(--surface-hover);
+.marketRow:hover {
+  background: rgba(31, 91, 255, 0.05);
 }
 
-.rowSelected {
-  background: rgba(46, 92, 255, 0.08);
-  box-shadow: inset 3px 0 0 var(--pm-blue);
+.marketRowSelected {
+  background: rgba(31, 91, 255, 0.1);
+  box-shadow: inset 3px 0 0 var(--dash-blue);
 }
 
-.rowSelected:hover {
-  background: rgba(46, 92, 255, 0.1);
-}
-
-.slug {
+.marketQuestion {
   display: block;
-  font-size: 0.72rem;
-  color: var(--muted);
-  margin-top: 0.25rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.45;
+  color: #0a0e1a;
+}
+
+.marketSlug {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: rgba(10, 14, 26, 0.52);
   font-family: var(--font-geist-mono), ui-monospace, monospace;
+  word-break: break-all;
+}
+
+/* ── Detail card (chart + sidebar) ── */
+
+.detailCard {
+  background: var(--card-bg);
+  border-radius: var(--card-radius);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.detailBody {
+  display: grid;
+  grid-template-columns: 1fr minmax(240px, 30%);
+  flex: 1;
+  min-height: 0;
+}
+
+.chartPanel {
+  display: flex;
+  flex-direction: column;
+  padding: 1.35rem 1.5rem 1rem;
+  min-width: 0;
+}
+
+.chartTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.probBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.probWord {
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--dash-blue);
+  text-transform: lowercase;
+}
+
+.probRow {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+}
+
+.probValue {
+  font-family: var(--font-sans);
+  font-size: 2.75rem;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--dash-blue-deep);
+  letter-spacing: -0.03em;
+}
+
+.probLabel {
+  font-family: var(--font-sans);
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--dash-blue);
+}
+
+.probDelta {
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--dash-green);
+}
+
+.platformTag {
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: rgba(10, 14, 26, 0.4);
+  white-space: nowrap;
+  padding-top: 0.35rem;
+}
+
+.chartCanvas {
+  flex: 1;
+  min-height: 260px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #f8faff 0%, #fff 100%);
+  border: 1px solid rgba(31, 91, 255, 0.08);
+}
+
+.chartSvg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 260px;
+}
+
+.chartFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 0.85rem;
+  padding-top: 0.25rem;
+}
+
+.chartMetaLeft {
+  display: flex;
+  gap: 1.25rem;
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: rgba(10, 14, 26, 0.5);
+}
+
+.chartTimeframes {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.timeframeBtn {
+  padding: 0.2rem 0.45rem;
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: rgba(10, 14, 26, 0.45);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.timeframeBtn:hover {
+  color: var(--dash-blue);
+  background: rgba(31, 91, 255, 0.08);
+}
+
+/* ── Selected market sidebar (inside detail card) ── */
+.marketSidebar {
+  border-left: 1px solid rgba(10, 14, 26, 0.08);
+  padding: 1.35rem 1.25rem;
+  overflow-y: auto;
+  background: #fafbff;
+}
+
+.sidebarTitle {
+  font-family: var(--font-sans);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dash-blue);
+  margin: 0 0 1rem;
+}
+
+.sidebarEmpty {
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: rgba(10, 14, 26, 0.5);
 }
 
 .summaryGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
 }
 
 .summaryItem {
-  background: #f8faff;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 0.75rem 0.9rem;
+  background: #fff;
+  border: 1px solid rgba(31, 91, 255, 0.12);
+  border-radius: 10px;
+  padding: 0.7rem 0.85rem;
 }
 
 .summaryItemFull {
-  grid-column: 1 / -1;
+  /* full width in column layout */
 }
 
 .summaryLabel {
-  font-family: var(--font-geist-mono), ui-monospace, monospace;
-  font-size: 0.6875rem;
-  font-weight: 600;
+  font-family: var(--font-sans);
+  font-size: 0.625rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-  margin-bottom: 0.35rem;
+  letter-spacing: 0.1em;
+  color: rgba(10, 14, 26, 0.45);
+  margin-bottom: 0.3rem;
 }
 
 .summaryValue {
-  font-family: "Garet", var(--font-geist-sans), system-ui, sans-serif;
-  font-size: 0.875rem;
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
   line-height: 1.45;
-  color: var(--foreground);
+  color: #0a0e1a;
   word-break: break-word;
 }
 
 .summaryValueMono {
   font-family: var(--font-geist-mono), ui-monospace, monospace;
-  font-size: 0.8125rem;
-  color: #2e5cff;
+  font-size: 0.75rem;
+  color: var(--dash-blue);
 }
 
-.actions {
+/* ── Predikt Now ── */
+.detailActions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  align-items: center;
-  margin-top: 1.25rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--border);
+  justify-content: flex-end;
+  padding: 1rem 1.5rem 1.35rem;
+  border-top: 1px solid rgba(10, 14, 26, 0.06);
+  background: #fff;
 }
 
-.primary {
-  padding: 0.7rem 1.35rem;
-  font-size: 0.875rem;
-  font-weight: 600;
-  font-family: "Garet", var(--font-geist-sans), system-ui, sans-serif;
+.prediktNowBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  padding: 0.85rem 2.25rem;
+  font-size: 1.35rem;
+  font-weight: 400;
+  font-family: var(--font-serif), "Instrument Serif", Georgia, serif;
+  font-style: italic;
   color: #fff;
-  background: #0a0e1a;
+  background: linear-gradient(90deg, #1f5bff 0%, #3b9eff 100%);
   border: none;
   border-radius: 999px;
   cursor: pointer;
-  transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.15) inset,
+    0 12px 36px rgba(31, 91, 255, 0.45);
+  transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
 }
 
-.primary:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(10, 14, 26, 0.2);
+.prediktIcon {
+  width: 1.65rem !important;
+  height: 1.65rem !important;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
 }
 
-.primary:active:not(:disabled) {
-  transform: translateY(0);
+.prediktNowBtn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.2) inset,
+    0 16px 44px rgba(31, 91, 255, 0.5);
 }
 
-.primary:disabled {
-  opacity: 0.4;
+.prediktNowBtn:disabled {
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
-.status {
-  font-family: "Garet", var(--font-geist-sans), system-ui, sans-serif;
-  font-size: 0.8125rem;
-  color: var(--muted);
+/* ── Inference (collapsed below) ── */
+.inferenceCard {
+  flex-shrink: 0;
+  background: var(--card-bg);
+  border-radius: var(--card-radius);
+  padding: 1.25rem 1.5rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  max-height: 28vh;
+  overflow-y: auto;
 }
 
-.error {
-  color: var(--danger);
+.inferenceTitle {
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dash-blue);
+  margin: 0 0 0.75rem;
 }
 
 .pre {
-  margin: 0.75rem 0 0;
+  margin: 0;
   padding: 1rem;
   font-size: 0.75rem;
   line-height: 1.5;
   font-family: var(--font-geist-mono), ui-monospace, monospace;
   background: #0a0e1a;
-  border: 1px solid rgba(46, 92, 255, 0.2);
-  border-radius: var(--radius-sm);
+  border-radius: 10px;
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-word;
   color: rgba(240, 244, 255, 0.88);
 }
 
+.status {
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
+  color: rgba(10, 14, 26, 0.55);
+  padding: 1.1rem 1.2rem;
+}
+
+.error {
+  color: var(--danger);
+}
+
 .empty {
-  padding: 2rem 1rem;
+  padding: 2rem 1.2rem;
   text-align: center;
-  font-family: "Garet", var(--font-geist-sans), system-ui, sans-serif;
-  font-size: 0.875rem;
-  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  color: rgba(10, 14, 26, 0.5);
 }
 
-.emptyState {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  padding: 2.5rem 1rem;
-  text-align: center;
-}
-
-.emptyIcon {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  background: rgba(46, 92, 255, 0.08);
-  border: 1px dashed var(--border-strong);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--muted);
-}
-
-.emptyIcon svg {
-  width: 22px;
-  height: 22px;
-}
-
-@media (max-width: 960px) {
-  .panel {
+@media (max-width: 1100px) {
+  .mainGrid {
     grid-template-columns: 1fr;
-    min-height: auto;
   }
 
-  .listWrap {
-    max-height: 360px;
+  .detailBody {
+    grid-template-columns: 1fr;
   }
 
-  .summaryGrid {
-    grid-template-columns: 1fr;
+  .marketSidebar {
+    border-left: none;
+    border-top: 1px solid rgba(10, 14, 26, 0.08);
+  }
+
+  .marketsScrollArea {
+    max-height: 400px;
+  }
+
+  .sectionTitleSpacer {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .dashboardHeader {
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    gap: 1rem;
+  }
+
+  .brandLogo {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .signOutBtn {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  .searchBar {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    max-width: none;
+    justify-self: stretch;
+  }
+}
+
+@media (max-width: 640px) {
+  .sectionTitle {
+    font-size: 1.25rem;
+  }
+
+  .marketQuestion {
+    font-size: 0.975rem;
+  }
+
+  .marketSlug {
+    font-size: 0.8rem;
+  }
+
+  .brandLogo {
+    height: 3.5rem;
+    width: auto !important;
+  }
+
+  .probValue {
+    font-size: 2.25rem;
+  }
+
+  .prediktNowBtn {
+    width: 100%;
+    font-size: 1.15rem;
+  }
+
+  .detailActions {
+    justify-content: stretch;
+  }
+
+  .chartTimeframes {
+    display: none;
   }
 }

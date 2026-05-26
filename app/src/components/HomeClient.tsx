@@ -1,16 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useRouter } from "next/navigation";
 
-import { DashboardView } from "@/components/DashboardView";
 import { LandingPage } from "@/components/LandingPage";
 
 export function HomeClient() {
-  const [showDashboard, setShowDashboard] = useState(false);
+  const router = useRouter();
 
-  if (showDashboard) {
-    return <DashboardView onBack={() => setShowDashboard(false)} />;
-  }
-
-  return <LandingPage onEnter={() => setShowDashboard(true)} />;
+  return (
+    <div style={{ minHeight: "100dvh", background: "#050505" }}>
+      <LandingPage onEnter={() => router.push("/dashboard")} />
+    </div>
+  );
 }

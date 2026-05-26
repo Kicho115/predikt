@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { MarketSummary } from "@/lib/types";
 
@@ -10,22 +11,6 @@ type MarketsResponse = {
   markets: MarketSummary[];
   total: number;
 };
-
-function CardHeader({ label, htmlFor }: { label: string; htmlFor?: string }) {
-  const Tag = htmlFor ? "label" : "span";
-  return (
-    <div className={styles.cardHeader}>
-      <span className={styles.cardIcon} aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M4 6h16M4 12h16M4 18h10" strokeLinecap="round" />
-        </svg>
-      </span>
-      <Tag className={styles.label} {...(htmlFor ? { htmlFor } : {})}>
-        {label}
-      </Tag>
-    </div>
-  );
-}
 
 function SummaryItem({
   label,
@@ -39,20 +24,60 @@ function SummaryItem({
   mono?: boolean;
 }) {
   return (
-    <div
-      className={`${styles.summaryItem}${full ? ` ${styles.summaryItemFull}` : ""}`}
-    >
+    <div className={`${styles.summaryItem}${full ? ` ${styles.summaryItemFull}` : ""}`}>
       <dt className={styles.summaryLabel}>{label}</dt>
-      <dd
-        className={`${styles.summaryValue}${mono ? ` ${styles.summaryValueMono}` : ""}`}
-      >
+      <dd className={`${styles.summaryValue}${mono ? ` ${styles.summaryValueMono}` : ""}`}>
         {value}
       </dd>
     </div>
   );
 }
 
-export function MarketPredictPanel() {
+function ChartMock() {
+  return (
+    <svg
+      className={styles.chartSvg}
+      viewBox="0 0 560 220"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      <defs>
+        <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#1f5bff" stopOpacity="0.18" />
+          <stop offset="100%" stopColor="#1f5bff" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <line
+          key={`h-${i}`}
+          x1="0"
+          y1={44 * i}
+          x2="560"
+          y2={44 * i}
+          stroke="rgba(15, 23, 42, 0.06)"
+          strokeWidth="1"
+        />
+      ))}
+      <path
+        d="M0 168 C60 150, 90 120, 140 130 S220 80, 280 95 S400 40, 560 55 L560 220 L0 220 Z"
+        fill="url(#chartFill)"
+      />
+      <path
+        d="M0 168 C60 150, 90 120, 140 130 S220 80, 280 95 S400 40, 560 55"
+        fill="none"
+        stroke="#1f5bff"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+type MarketPredictPanelProps = {
+  onBack: () => void;
+};
+
+export function MarketPredictPanel({ onBack }: MarketPredictPanelProps) {
   const [markets, setMarkets] = useState<MarketSummary[]>([]);
   const [marketsLoading, setMarketsLoading] = useState(true);
   const [marketsError, setMarketsError] = useState<string | null>(null);
@@ -88,11 +113,7 @@ export function MarketPredictPanel() {
         }
       } catch (e) {
         if (!cancelled) {
-          setMarketsError(
-            e instanceof Error
-              ? e.message
-              : "Could not load markets.",
-          );
+          setMarketsError(e instanceof Error ? e.message : "Could not load markets.");
           setMarkets([]);
         }
       } finally {
@@ -146,106 +167,200 @@ export function MarketPredictPanel() {
   }
 
   return (
-    <div className={styles.panel}>
-      <div className={styles.leftColumn}>
-        <div className={styles.card}>
-          <CardHeader label="Search markets" htmlFor="market-search" />
-          <div className={styles.searchWrap}>
-            <span className={styles.searchIcon} aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="11" cy="11" r="7" />
-                <path d="M20 20l-3-3" strokeLinecap="round" />
-              </svg>
-            </span>
-            <input
-              id="market-search"
-              className={styles.search}
-              type="search"
-              placeholder="Filter by title or slug…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              disabled={marketsLoading || !!marketsError}
-              autoComplete="off"
-            />
-          </div>
+    <div className={styles.wrapper}>
+      <header className={styles.dashboardHeader}>
+        <Image
+          src="/Predikt.png"
+          alt="Predikt"
+          width={320}
+          height={86}
+          className={styles.brandLogo}
+          priority
+        />
+
+        <div className={styles.searchBar}>
+          <input
+            id="market-search"
+            className={styles.searchInput}
+            type="search"
+            placeholder="Search Markets, themes, trends, etc."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            disabled={marketsLoading || !!marketsError}
+            autoComplete="off"
+          />
+          <button type="button" className={styles.searchBtn} aria-label="Search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <circle cx="11" cy="11" r="7" />
+              <path d="M20 20l-3.5-3.5" strokeLinecap="round" />
+            </svg>
+          </button>
         </div>
 
-        <div className={`${styles.card} ${styles.cardMarkets}`}>
-          <CardHeader label="Active markets" />
-          {marketsLoading && <p className={styles.status}>Loading markets…</p>}
-          {marketsError && (
-            <p className={`${styles.status} ${styles.error}`}>{marketsError}</p>
-          )}
-          {!marketsLoading && !marketsError && filtered.length === 0 && (
-            <p className={styles.empty}>No matching markets.</p>
-          )}
-          {!marketsLoading && !marketsError && filtered.length > 0 && (
-            <MarketsList
-              filtered={filtered}
-              selected={selected}
-              onSelect={setSelected}
-            />
-          )}
-        </div>
+        <button type="button" className={styles.signOutBtn} onClick={onBack}>
+          Sign Out
+        </button>
+      </header>
+
+      <div className={styles.mainGrid}>
+        <aside className={styles.panelCol}>
+          <h2 className={styles.sectionTitle}>Active Trending markets</h2>
+          <div className={styles.marketsCard}>
+            {marketsLoading && <p className={styles.status}>Loading markets…</p>}
+            {marketsError && (
+              <p className={`${styles.status} ${styles.error}`}>{marketsError}</p>
+            )}
+            {!marketsLoading && !marketsError && filtered.length === 0 && (
+              <p className={styles.empty}>No matching markets.</p>
+            )}
+            {!marketsLoading && !marketsError && filtered.length > 0 && (
+              <MarketsScrollArea>
+                <MarketsList
+                  filtered={filtered}
+                  selected={selected}
+                  onSelect={setSelected}
+                />
+              </MarketsScrollArea>
+            )}
+          </div>
+        </aside>
+
+        <section className={styles.panelCol}>
+          <div className={styles.sectionTitleSpacer} aria-hidden="true" />
+          <div className={styles.detailCard}>
+            <div className={styles.detailBody}>
+              <div className={styles.chartPanel}>
+                <div className={styles.chartTop}>
+                  <div className={styles.probBlock}>
+                    <span className={styles.probWord}>si</span>
+                    <div className={styles.probRow}>
+                      <span className={styles.probValue}>
+                        {selected ? "46%" : "—"}
+                      </span>
+                      <span className={styles.probLabel}>probabilidad</span>
+                      {selected && <span className={styles.probDelta}>▲ 16%</span>}
+                    </div>
+                  </div>
+                  <span className={styles.platformTag}>Polymarket</span>
+                </div>
+
+                <div className={styles.chartCanvas}>
+                  <ChartMock />
+                </div>
+
+                <div className={styles.chartFooter}>
+                  <div className={styles.chartMetaLeft}>
+                    <span>$18,552 Vol.</span>
+                    <span>31 dic 2026</span>
+                  </div>
+                  <div className={styles.chartTimeframes}>
+                    {["1H", "6H", "1D", "1S", "1M", "TODO"].map((t) => (
+                      <button key={t} type="button" className={styles.timeframeBtn}>
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <aside className={styles.marketSidebar}>
+                <h3 className={styles.sidebarTitle}>Selected market</h3>
+                {selected ? (
+                  <dl className={styles.summaryGrid}>
+                    <SummaryItem full label="Question" value={selected.question} />
+                    <SummaryItem label="Slug" value={selected.slug || "—"} mono />
+                    <SummaryItem
+                      label="Volume"
+                      value={selected.volume.toLocaleString("en")}
+                    />
+                    <SummaryItem
+                      full
+                      label="Tokens CLOB"
+                      value={
+                        selected.clobTokenIds.length
+                          ? selected.clobTokenIds.join(", ")
+                          : "—"
+                      }
+                      mono
+                    />
+                  </dl>
+                ) : (
+                  <p className={styles.sidebarEmpty}>Choose a market from the list.</p>
+                )}
+              </aside>
+            </div>
+
+            <div className={styles.detailActions}>
+              <button
+                type="button"
+                className={styles.prediktNowBtn}
+                disabled={!selected || predictLoading}
+                onClick={handlePredict}
+              >
+                <Image
+                  src="/logo-predikt.png"
+                  alt=""
+                  width={28}
+                  height={28}
+                  className={styles.prediktIcon}
+                />
+                <span>{predictLoading ? "Predicting…" : "Predikt Now"}</span>
+              </button>
+            </div>
+          </div>
+        </section>
       </div>
 
-      <div className={styles.rightColumn}>
-        <div className={styles.card}>
-          <CardHeader label="Selected market" />
-          {selected ? (
-            <dl className={styles.summaryGrid}>
-              <SummaryItem full label="Question" value={selected.question} />
-              <SummaryItem label="Slug" value={selected.slug || "—"} mono />
-              <SummaryItem
-                label="Volume"
-                value={selected.volume.toLocaleString("en")}
-              />
-              <SummaryItem
-                full
-                label="Tokens CLOB"
-                value={
-                  selected.clobTokenIds.length
-                    ? selected.clobTokenIds.join(", ")
-                    : "—"
-                }
-                mono
-              />
-            </dl>
-          ) : (
-            <div className={styles.emptyState}>
-              <span className={styles.emptyIcon} aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                  <rect x="3" y="3" width="18" height="18" rx="3" />
-                  <path d="M8 12h8M12 8v8" strokeLinecap="round" />
-                </svg>
-              </span>
-              <p className={styles.status}>Choose a market from the list.</p>
-            </div>
+      {(predictError || predictJson) && (
+        <div className={styles.inferenceCard}>
+          <h3 className={styles.inferenceTitle}>Inference response</h3>
+          {predictError && (
+            <p className={`${styles.status} ${styles.error}`}>{predictError}</p>
           )}
-          <div className={styles.actions}>
-            <button
-              type="button"
-              className={styles.primary}
-              disabled={!selected || predictLoading}
-              onClick={handlePredict}
-            >
-              {predictLoading ? "Sending…" : "Send to prediction"}
-            </button>
-            {predictLoading && (
-              <span className={styles.status}>Calling API…</span>
-            )}
-          </div>
+          {predictJson && <pre className={styles.pre}>{predictJson}</pre>}
         </div>
+      )}
+    </div>
+  );
+}
 
-        {(predictError || predictJson) && (
-          <div className={styles.card}>
-            <CardHeader label="Inference response" />
-            {predictError && (
-              <p className={`${styles.status} ${styles.error}`}>{predictError}</p>
-            )}
-            {predictJson && <pre className={styles.pre}>{predictJson}</pre>}
-          </div>
-        )}
+function MarketsScrollArea({ children }: { children: React.ReactNode }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  function scrollByPage(direction: "up" | "down") {
+    const el = scrollRef.current;
+    if (!el) return;
+    const amount = Math.max(160, el.clientHeight * 0.75);
+    el.scrollBy({ top: direction === "up" ? -amount : amount, behavior: "smooth" });
+  }
+
+  return (
+    <div className={styles.marketsScrollArea}>
+      <div ref={scrollRef} className={styles.marketsListScroll}>
+        {children}
+      </div>
+      <div className={styles.scrollRail}>
+        <button
+          type="button"
+          className={styles.scrollArrow}
+          aria-label="Scroll up"
+          onClick={() => scrollByPage("up")}
+        >
+          <svg viewBox="0 0 12 8" aria-hidden="true">
+            <path d="M6 1.5 10.5 7.5h-9L6 1.5z" fill="currentColor" />
+          </svg>
+        </button>
+        <div className={styles.scrollRailTrack} aria-hidden="true" />
+        <button
+          type="button"
+          className={styles.scrollArrow}
+          aria-label="Scroll down"
+          onClick={() => scrollByPage("down")}
+        >
+          <svg viewBox="0 0 12 8" aria-hidden="true">
+            <path d="M6 6.5 1.5.5h9L6 6.5z" fill="currentColor" />
+          </svg>
+        </button>
       </div>
     </div>
   );
@@ -261,27 +376,25 @@ function MarketsList({
   onSelect: (m: MarketSummary) => void;
 }) {
   return (
-    <div className={styles.listWrap}>
-      <ul className={styles.list} role="listbox" aria-label="Market list">
-        {filtered.map((m, idx) => {
-          const isSel =
-            selected?.slug === m.slug && selected?.question === m.question;
-          return (
-            <li key={`${m.id ?? m.slug}-${idx}`}>
-              <button
-                type="button"
-                role="option"
-                aria-selected={isSel}
-                className={`${styles.row} ${isSel ? styles.rowSelected : ""}`}
-                onClick={() => onSelect(m)}
-              >
-                {m.question || "(No title)"}
-                {m.slug ? <span className={styles.slug}>{m.slug}</span> : null}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
+    <ul className={styles.marketList} role="listbox" aria-label="Market list">
+      {filtered.map((m, idx) => {
+        const isSel =
+          selected?.slug === m.slug && selected?.question === m.question;
+        return (
+          <li key={`${m.id ?? m.slug}-${idx}`}>
+            <button
+              type="button"
+              role="option"
+              aria-selected={isSel}
+              className={`${styles.marketRow} ${isSel ? styles.marketRowSelected : ""}`}
+              onClick={() => onSelect(m)}
+            >
+              <span className={styles.marketQuestion}>{m.question || "(No title)"}</span>
+              {m.slug ? <span className={styles.marketSlug}>{m.slug}</span> : null}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { HeroTerrain } from "./HeroTerrain";
 import styles from "./LandingPage.module.css";
 
 type LandingPageProps = {
@@ -7,13 +8,6 @@ type LandingPageProps = {
 };
 
 type FeatureIconType = "chart" | "ai" | "bolt" | "shield" | "search" | "code";
-
-const STATS = [
-  { value: "200+", label: "Active markets" },
-  { value: "ML", label: "Real-time inference" },
-  { value: "API", label: "Flexible integration" },
-  { value: "JSON", label: "Structured responses" },
-];
 
 const STEPS = [
   {
@@ -39,15 +33,43 @@ const STEPS = [
 const FAQS = [
   {
     q: "What is Predikt?",
-    a: "A panel to explore Polymarket markets and send predictions to your own machine learning service.",
+    a: "Predikt is a dashboard to explore active Polymarket markets and send selected markets to your own machine learning inference service for probability estimates.",
   },
   {
     q: "Do I need to configure anything?",
-    a: "Yes. Set the INFERENCE_API_URL variable pointing to your inference API to receive predictions.",
+    a: "Yes. Set the INFERENCE_API_URL environment variable to the URL of your prediction API. Without it, the panel can still browse markets but cannot run predictions.",
   },
   {
     q: "Does Predikt manage my wallet?",
-    a: "No. It only reads public market data and sends it to your API. It never touches funds or private keys.",
+    a: "No. Predikt only reads public market data from Polymarket and forwards your selection to your API. It never holds funds, signs transactions, or accesses private keys.",
+  },
+  {
+    q: "Do I need a Polymarket account?",
+    a: "No account is required to browse markets or run predictions in Predikt. Trading on Polymarket itself is separate and handled on polymarket.com.",
+  },
+  {
+    q: "What data is sent to my inference API?",
+    a: "When you click predict, Predikt sends a JSON payload with the market question, slug, volume, and CLOB token IDs—the same fields exposed by the public Gamma API.",
+  },
+  {
+    q: "What should my inference API return?",
+    a: "Your service should respond with JSON your model defines—typically outcome probabilities or a structured prediction. Predikt displays the raw response in the panel so you can validate outputs quickly.",
+  },
+  {
+    q: "Can I use my own ML or deep learning model?",
+    a: "Yes. Predikt is model-agnostic: any HTTP endpoint that accepts the market payload and returns JSON can power predictions, from scikit-learn to PyTorch or custom ensembles.",
+  },
+  {
+    q: "How often is market data updated?",
+    a: "Markets are loaded from the Polymarket Gamma API when you open the dashboard. Refresh the page or re-enter the panel to pull the latest active market list.",
+  },
+  {
+    q: "Is Predikt free to use?",
+    a: "The Predikt frontend is free to run locally or deploy yourself. You may incur costs from hosting your inference API, Polymarket rate limits, or any cloud resources you attach.",
+  },
+  {
+    q: "Can I search markets by keyword?",
+    a: "Yes. The dashboard search filters the loaded market list by title or slug as you type, so you can find specific events without scrolling the full catalog.",
   },
 ];
 
@@ -62,17 +84,6 @@ function ArrowUpRight({ className }: { className?: string }) {
       aria-hidden="true"
     >
       <path d="M4 12L12 4M12 4H6M12 4V10" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function CrystalBallIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
-      <circle cx="12" cy="10" r="5.5" />
-      <path d="M8 18h8M9.5 18c.5-1.2 1.6-2 2.5-2s2 .8 2.5 2" strokeLinecap="round" />
-      <path d="M9 8l1 1M15 8l-1 1M12 6v1" strokeLinecap="round" />
-      <path d="M7 5l.8.8M17 5l-.8.8" strokeLinecap="round" opacity="0.7" />
     </svg>
   );
 }
@@ -190,86 +201,47 @@ function FeatureCard({
   );
 }
 
-function HeroVisual() {
-  return (
-    <div className={styles.heroVisual} aria-hidden="true">
-      <div className={styles.heroCardStack}>
-        <div className={styles.heroCardMain}>
-          <div className={styles.heroCardGrain} />
-          <div className={styles.heroCardGlow} />
-          <div className={styles.heroCardContent}>
-            <span className={styles.heroCardStat}>200+</span>
-            <p className={styles.heroCardCaption}>
-              Glass gradients and patterns for your prediction insights.
-            </p>
-            <span className={styles.heroCardArrow}>
-              <ArrowUpRight />
-            </span>
-          </div>
-          <div className={styles.heroCardGrid}>
-            {Array.from({ length: 6 }, (_, i) => (
-              <span key={i} className={styles.heroCardBar} style={{ height: `${35 + (i % 3) * 22}%` }} />
-            ))}
-          </div>
-        </div>
-        <div className={styles.heroCardSide}>
-          <div className={styles.heroCardSideGradient} />
-          <span className={styles.heroCardSideLabel}>ML</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function LandingPage({ onEnter }: LandingPageProps) {
   return (
     <div className={styles.landing}>
+      <div className={styles.landingBackdrop} aria-hidden="true">
+        <span className={styles.backdropBase} />
+        <span className={styles.backdropGlow} />
+        <span className={styles.backdropGrid} />
+        <span className={styles.backdropNoise} />
+      </div>
+
       <header className={styles.heroZone}>
-        <nav className={styles.nav}>
+        <nav className={styles.nav} aria-label="Main">
           <NavBrand />
           <NavLinks />
           <button type="button" className={styles.navCta} onClick={onEnter}>
-            Get started
+            Sign In
           </button>
         </nav>
 
         <div className={styles.heroLayout}>
           <main className={styles.heroContent}>
             <h1 className={styles.headline}>
-              From raw data to{" "}
+              <span className={styles.headlineBold}>From raw data to</span>{" "}
               <em className={styles.headlineEm}>market direction</em>
             </h1>
 
             <p className={styles.subheadline}>
-              Gain valuable insights and predictions on ups and downs for
-              prediction markets like{" "}
-              <em className={styles.subheadlineEm}>Polymarket</em> or{" "}
-              <em className={styles.subheadlineEm}>Kalshi</em> from Machine and
-              Deep Learning Models.
+              Gain valuable insights and predictions on up and downs for Polymarket
+              from Machine and Deep Learning Models.
             </p>
 
-            <div className={styles.heroActions}>
-              <button type="button" className={styles.heroCtaOutline} onClick={onEnter}>
-                Get started
-                <ArrowUpRight className={styles.heroCtaIcon} />
-              </button>
-            </div>
+            <button type="button" className={styles.heroCtaPrimary} onClick={onEnter}>
+              Get Started FREE
+            </button>
           </main>
-
-          <HeroVisual />
         </div>
+
+        <HeroTerrain />
       </header>
 
-      <section aria-label="Metrics" className={styles.section}>
-        <div className={styles.stats}>
-          {STATS.map((stat) => (
-            <div key={stat.label} className={styles.statItem}>
-              <span className={styles.statValue}>{stat.value}</span>
-              <span className={styles.statLabel}>{stat.label}</span>
-            </div>
-          ))}
-        </div>
-      </section>
+      <div className={styles.sectionRule} aria-hidden="true" />
 
       <section id="features" className={styles.section}>
         <SectionHeader
@@ -288,6 +260,8 @@ export function LandingPage({ onEnter }: LandingPageProps) {
         </div>
       </section>
 
+      <div className={styles.sectionRule} aria-hidden="true" />
+
       <section id="how" className={styles.section}>
         <SectionHeader
           eyebrow="How it works"
@@ -297,6 +271,8 @@ export function LandingPage({ onEnter }: LandingPageProps) {
         />
         <StepsSection />
       </section>
+
+      <div className={styles.sectionRule} aria-hidden="true" />
 
       <section className={styles.section}>
         <SectionHeader
@@ -323,6 +299,8 @@ export function LandingPage({ onEnter }: LandingPageProps) {
           </div>
         </div>
       </section>
+
+      <div className={styles.sectionRule} aria-hidden="true" />
 
       <section className={styles.section}>
         <div className={styles.integrations}>
@@ -361,6 +339,8 @@ export function LandingPage({ onEnter }: LandingPageProps) {
         </div>
       </section>
 
+      <div className={styles.sectionRule} aria-hidden="true" />
+
       <section id="faq" className={styles.section}>
         <SectionHeader
           eyebrow="FAQ"
@@ -378,7 +358,7 @@ export function LandingPage({ onEnter }: LandingPageProps) {
         </div>
       </section>
 
-      <section className={styles.section}>
+      <section className={`${styles.section} ${styles.sectionCta}`}>
         <div className={styles.ctaBand}>
           <h2 className={styles.ctaBandTitle}>
             Ready to explore <em className={styles.sectionTitleEm}>markets</em>?
@@ -406,14 +386,11 @@ export function LandingPage({ onEnter }: LandingPageProps) {
 function NavLinks() {
   return (
     <div className={styles.navLinks}>
-      <a href="#features" className={styles.navLinkAccent}>
+      <a href="#features" className={styles.navLink}>
         Features
       </a>
-      <a href="#how" className={styles.navLink}>
-        How it works
-      </a>
       <a href="#faq" className={styles.navLink}>
-        FAQ
+        FAQs
       </a>
     </div>
   );
@@ -436,10 +413,15 @@ function StepsSection() {
 function NavBrand() {
   return (
     <div className={styles.navBrand}>
-      <span className={styles.navLogoBadge} aria-hidden="true">
-        <CrystalBallIcon />
-      </span>
-      <span className={styles.navTitle}>Predikt</span>
+      {/* Native img avoids Next/Image + CSS module className hydration mismatch on SSR */}
+      <img
+        src="/Predikt.png"
+        alt="Predikt"
+        width={320}
+        height={86}
+        className={styles.navLogo}
+        decoding="async"
+      />
     </div>
   );
 }
