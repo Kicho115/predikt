@@ -2,6 +2,10 @@ requests
 pandas
 numpy
 scikit-learn
+statsmodels
+xgboost
+joblib
+pyarrow
 matplotlib
 seaborn
 jupyter

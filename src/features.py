@@ -15,48 +15,46 @@ import pandas as pd
 # Market features (endogenous)
 # ---------------------------------------------------------------------------
 
-def build_market_features(df: pd.DataFrame, price_col: str = "price") -> pd.DataFrame:
-    """Add technical features to a daily price DataFrame.
+def build_market_features(
+    df: pd.DataFrame,
+    price_col: str = "price",
+    *,
+    ret_windows: tuple[int, int, int] = (1, 3, 7),
+    ma_short: int = 7,
+    ma_long: int = 14,
+    vol_window: int = 7,
+) -> pd.DataFrame:
+    """Add technical features to a price series (one row per bar).
 
-    Input  : DataFrame with at minimum a `date` column and `price_col`.
-    Output : same DataFrame with added feature columns (rows with NaN kept).
-
-    Features
-    --------
-    ret_1d   : 1-day log return
-    ret_3d   : 3-day log return
-    ret_7d   : 7-day log return
-    ma7      : 7-day simple moving average
-    ma14     : 14-day simple moving average
-    ma_ratio : ma7 / ma14  (momentum proxy)
-    vol7     : 7-day rolling std of log returns (volatility)
-    price    : current closing price (probability proxy)
+    Column names stay ``ret_1d`` / ``ma7`` etc. for compatibility; window sizes
+    are in *bars* (1 bar = 1 hour for hourly data, 1 day for daily data).
     """
     df = df.copy().sort_values("date").reset_index(drop=True)
     p = df[price_col].astype(float)
-    log_ret = np.log(p + 1e-8) - np.log(p.shift(1) + 1e-8)
+    w1, w3, w7 = ret_windows
+    log_ret = np.log(p + 1e-8) - np.log(p.shift(w1) + 1e-8)
 
     df["ret_1d"] = log_ret
-    df["ret_3d"] = np.log(p + 1e-8) - np.log(p.shift(3) + 1e-8)
-    df["ret_7d"] = np.log(p + 1e-8) - np.log(p.shift(7) + 1e-8)
-    df["ma7"] = p.rolling(7, min_periods=3).mean()
-    df["ma14"] = p.rolling(14, min_periods=5).mean()
+    df["ret_3d"] = np.log(p + 1e-8) - np.log(p.shift(w3) + 1e-8)
+    df["ret_7d"] = np.log(p + 1e-8) - np.log(p.shift(w7) + 1e-8)
+    df["ma7"] = p.rolling(ma_short, min_periods=max(2, ma_short // 2)).mean()
+    df["ma14"] = p.rolling(ma_long, min_periods=max(3, ma_long // 2)).mean()
     df["ma_ratio"] = df["ma7"] / (df["ma14"] + 1e-8)
-    df["vol7"] = log_ret.rolling(7, min_periods=3).std()
+    df["vol7"] = log_ret.rolling(vol_window, min_periods=max(2, vol_window // 2)).std()
     df["price"] = p
 
     return df
 
-def build_labels(df: pd.DataFrame, price_col: str = "price") -> pd.DataFrame:
-    """Add binary classification label.
-
-    label = 1  if next-day price > today's price  (UP)
-    label = 0  if next-day price <= today's price  (DOWN / FLAT)
-
-    The last row will have label = NaN and must be dropped before training.
-    """
+def build_labels(
+    df: pd.DataFrame,
+    price_col: str = "price",
+    *,
+    forward_steps: int = 1,
+) -> pd.DataFrame:
+    """Binary label: 1 if price rises after ``forward_steps`` bars, else 0."""
     df = df.copy()
-    df["label"] = (df[price_col].shift(-1) > df[price_col]).astype("Int64")
+    future = df[price_col].shift(-forward_steps)
+    df["label"] = (future > df[price_col]).astype("Int64")
     return df
 
 

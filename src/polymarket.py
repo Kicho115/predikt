@@ -118,8 +118,10 @@ class PolymarketClient:
         fidelity: int = 1440,
         start_ts: Optional[int] = None,
         end_ts: Optional[int] = None,
+        *,
+        bar: str = "auto",
     ) -> pd.DataFrame:
-        """Fetch daily price history for a single CLOB token.
+        """Fetch price history for a single CLOB token.
 
         Parameters
         ----------
@@ -129,6 +131,8 @@ class PolymarketClient:
             Aggregation window: "max", "1m", "1w", "1d", "6h", "1h".
         fidelity : int
             Resolution in minutes (1440 = daily).
+        bar : str
+            Bar bucket: ``auto`` (from interval), ``1h``, ``6h``, ``1d``.
         start_ts / end_ts : int, optional
             Unix timestamps to restrict the window.
 
@@ -155,10 +159,16 @@ class PolymarketClient:
 
         df = pd.DataFrame(history)
         df = df.rename(columns={"t": "timestamp", "p": "price"})
-        df["date"] = pd.to_datetime(df["timestamp"], unit="s", utc=True).dt.normalize()
+        ts = pd.to_datetime(df["timestamp"], unit="s", utc=True)
+        bucket = bar if bar != "auto" else interval
+        if bucket in ("1h", "1H"):
+            df["date"] = ts.dt.floor("h")
+        elif bucket in ("6h", "6H"):
+            df["date"] = ts.dt.floor("6h")
+        else:
+            df["date"] = ts.dt.normalize()
         df["price"] = pd.to_numeric(df["price"], errors="coerce")
         df = df[["date", "price"]].dropna().sort_values("date").reset_index(drop=True)
-        # Keep last price per day when fidelity < 1440
         df = df.groupby("date", as_index=False).last()
         return df
 

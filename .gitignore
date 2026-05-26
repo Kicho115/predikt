@@ -202,7 +202,9 @@ __marimo__/
 # Predikt data (large files, fetched at runtime)
 data/raw/
 data/processed/
+processed/
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+!processed/.gitkeep
 
 /scripts

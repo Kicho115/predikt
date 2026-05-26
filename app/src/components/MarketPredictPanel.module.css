@@ -316,6 +316,8 @@
   flex-direction: column;
   padding: 1.35rem 1.5rem 1rem;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .chartTop {
@@ -347,6 +349,22 @@
   gap: 0.35rem 0.5rem;
 }
 
+.probChangeRow {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  margin-top: 0.1rem;
+}
+
+.probChangeLabel {
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: rgba(10, 14, 26, 0.45);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .probValue {
   font-family: var(--font-sans);
   font-size: 2.75rem;
@@ -370,6 +388,10 @@
   color: var(--dash-green);
 }
 
+.probDeltaDown {
+  color: #dc2626;
+}
+
 .platformTag {
   font-family: var(--font-sans);
   font-size: 0.75rem;
@@ -380,19 +402,39 @@
 }
 
 .chartCanvas {
-  flex: 1;
-  min-height: 260px;
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: min(42vh, 320px);
   border-radius: 12px;
   overflow: hidden;
   background: linear-gradient(180deg, #f8faff 0%, #fff 100%);
   border: 1px solid rgba(31, 91, 255, 0.08);
 }
 
+.chartOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  color: rgba(10, 14, 26, 0.45);
+  background: rgba(248, 250, 255, 0.72);
+}
+
+.chartOverlayError {
+  color: #dc2626;
+  padding: 0 1rem;
+  text-align: center;
+}
+
 .chartSvg {
   display: block;
   width: 100%;
   height: 100%;
-  min-height: 260px;
+  min-height: 0;
 }
 
 .chartFooter {
@@ -401,6 +443,9 @@
   justify-content: space-between;
   gap: 1rem;
   flex-wrap: wrap;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
   margin-top: 0.85rem;
   padding-top: 0.25rem;
 }
@@ -436,6 +481,11 @@
 .timeframeBtn:hover {
   color: var(--dash-blue);
   background: rgba(31, 91, 255, 0.08);
+}
+
+.timeframeBtnActive {
+  color: var(--dash-blue);
+  background: rgba(31, 91, 255, 0.12);
 }
 
 /* ── Selected market sidebar (inside detail card) ── */
@@ -507,10 +557,62 @@
 /* ── Predikt Now ── */
 .detailActions {
   display: flex;
-  justify-content: flex-end;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
   padding: 1rem 1.5rem 1.35rem;
   border-top: 1px solid rgba(10, 14, 26, 0.06);
   background: #fff;
+}
+
+.horizonPicker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.horizonPickerLabel {
+  font-family: var(--font-sans);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(10, 14, 26, 0.45);
+  margin-right: 0.35rem;
+}
+
+.horizonBtn {
+  padding: 0.4rem 0.75rem;
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: rgba(10, 14, 26, 0.55);
+  background: rgba(10, 14, 26, 0.04);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.horizonBtn:hover:not(:disabled) {
+  color: var(--dash-blue);
+  background: rgba(31, 91, 255, 0.08);
+}
+
+.horizonBtnActive {
+  color: var(--dash-blue);
+  background: rgba(31, 91, 255, 0.12);
+  border-color: rgba(31, 91, 255, 0.25);
+}
+
+.horizonBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .prediktNowBtn {
@@ -572,6 +674,77 @@
   text-transform: uppercase;
   color: var(--dash-blue);
   margin: 0 0 0.75rem;
+}
+
+.predictionBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.predictionBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  align-self: flex-start;
+  padding: 0.55rem 1.35rem;
+  border-radius: 999px;
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: 1.125rem;
+  letter-spacing: 0.04em;
+}
+
+.predictionUp {
+  color: #166534;
+  background: rgba(34, 197, 94, 0.14);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+}
+
+.predictionDown {
+  color: #991b1b;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.predictionArrow {
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.predictionLabel {
+  font-size: 1rem;
+}
+
+.predictionMeta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem 1.25rem;
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+}
+
+.predictionMeta dt {
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(10, 14, 26, 0.45);
+}
+
+.predictionMeta dd {
+  margin: 0.2rem 0 0;
+  font-weight: 600;
+  color: #0a0e1a;
+}
+
+.predictionNote {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  color: rgba(10, 14, 26, 0.5);
 }
 
 .pre {

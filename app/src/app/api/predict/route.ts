@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import type { MarketSummary, PredictRequestBody } from "@/lib/types";
+import { chartTimeframeToHorizon } from "@/lib/horizons";
+import { localInferenceConfigured, runLocalInference } from "@/lib/localInference";
+import type {
+  MarketSummary,
+  PredictHorizon,
+  PredictRequestBody,
+} from "@/lib/types";
 
 function isMarketSummary(x: unknown): x is MarketSummary {
   if (!x || typeof x !== "object") return false;
@@ -10,6 +16,18 @@ function isMarketSummary(x: unknown): x is MarketSummary {
     typeof m.question === "string" &&
     typeof m.volume === "number" &&
     Number.isFinite(m.volume) &&
+    (m.volume24hr === undefined ||
+      (typeof m.volume24hr === "number" && Number.isFinite(m.volume24hr))) &&
+    (m.eventSlug === undefined ||
+      m.eventSlug === null ||
+      typeof m.eventSlug === "string") &&
+    (m.yesPrice === undefined ||
+      (typeof m.yesPrice === "number" && Number.isFinite(m.yesPrice))) &&
+    (m.priceChange1d === undefined ||
+      (typeof m.priceChange1d === "number" && Number.isFinite(m.priceChange1d))) &&
+    (m.endDate === undefined ||
+      m.endDate === null ||
+      typeof m.endDate === "string") &&
     Array.isArray(m.clobTokenIds) &&
     m.clobTokenIds.every((t) => typeof t === "string") &&
     (m.id === null || typeof m.id === "string") &&
@@ -17,37 +35,13 @@ function isMarketSummary(x: unknown): x is MarketSummary {
   );
 }
 
-export async function POST(req: NextRequest) {
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  }
+function parseHorizon(raw: unknown): PredictHorizon {
+  if (raw === "1d" || raw === "1w") return raw;
+  return chartTimeframeToHorizon("1d");
+}
 
-  const payload = body as PredictRequestBody | null;
-  if (!payload || typeof payload !== "object" || !isMarketSummary(payload.market)) {
-    return NextResponse.json(
-      {
-        error:
-          "Body must be { market: { slug, question, volume, clobTokenIds, id, conditionId } }",
-      },
-      { status: 400 }
-    );
-  }
-
-  const inferenceUrl = process.env.INFERENCE_API_URL?.trim();
-  if (!inferenceUrl) {
-    return NextResponse.json(
-      {
-        error:
-          "INFERENCE_API_URL is not configured. Add it to .env.local to enable inference.",
-        code: "INFERENCE_NOT_CONFIGURED",
-      },
-      { status: 501 }
-    );
-  }
-
+async function proxyToInferenceService(body: unknown): Promise<NextResponse> {
+  const inferenceUrl = process.env.INFERENCE_API_URL!.trim();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Accept: "application/json",
@@ -77,4 +71,47 @@ export async function POST(req: NextRequest) {
     const msg = e instanceof Error ? e.message : "fetch failed";
     return NextResponse.json({ error: msg }, { status: 502 });
   }
+}
+
+export async function POST(req: NextRequest) {
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const payload = body as PredictRequestBody | null;
+  if (!payload || typeof payload !== "object" || !isMarketSummary(payload.market)) {
+    return NextResponse.json(
+      {
+        error:
+          "Body must be { market: { ... }, horizon?: 1d|1w }",
+      },
+      { status: 400 },
+    );
+  }
+
+  const horizon = parseHorizon(payload.horizon);
+  const requestBody = { ...payload, horizon };
+
+  const inferenceUrl = process.env.INFERENCE_API_URL?.trim();
+  if (inferenceUrl) {
+    return proxyToInferenceService(requestBody);
+  }
+
+  if (!localInferenceConfigured()) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "No inference backend. Either set INFERENCE_API_URL or place trained models under processed/models/ and ensure Python is on PATH.",
+        code: "INFERENCE_NOT_CONFIGURED",
+      },
+      { status: 501 },
+    );
+  }
+
+  const { result, status } = await runLocalInference(payload.market, horizon);
+  return NextResponse.json(result, { status });
 }

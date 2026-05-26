@@ -3,7 +3,26 @@
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { MarketSummary } from "@/lib/types";
+import { CHART_TIMEFRAMES } from "@/lib/clob";
+import {
+  chartTimeframeToHorizon,
+  horizonLabel,
+  PREDICT_HORIZONS,
+} from "@/lib/horizons";
+import {
+  buildPriceChartPaths,
+  formatEndDate,
+  formatPriceDelta,
+  formatProbPercent,
+  formatVolumeUsd,
+} from "@/lib/chart";
+import type {
+  ChartTimeframe,
+  MarketSummary,
+  PredictHorizon,
+  PredictResult,
+  PricePoint,
+} from "@/lib/types";
 
 import styles from "./MarketPredictPanel.module.css";
 
@@ -33,16 +52,30 @@ function SummaryItem({
   );
 }
 
-function ChartMock() {
+type PriceHistoryResponse = {
+  history: PricePoint[];
+};
+
+function MarketPriceChart({
+  points,
+  gradientId,
+}: {
+  points: PricePoint[];
+  gradientId: string;
+}) {
+  const paths = buildPriceChartPaths(points);
+  if (!paths) return null;
+
   return (
     <svg
       className={styles.chartSvg}
-      viewBox="0 0 560 220"
+      viewBox={paths.viewBox}
       preserveAspectRatio="none"
-      aria-hidden="true"
+      role="img"
+      aria-label="Polymarket price history"
     >
       <defs>
-        <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
+        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#1f5bff" stopOpacity="0.18" />
           <stop offset="100%" stopColor="#1f5bff" stopOpacity="0" />
         </linearGradient>
@@ -58,19 +91,23 @@ function ChartMock() {
           strokeWidth="1"
         />
       ))}
+      <path d={paths.area} fill={`url(#${gradientId})`} />
       <path
-        d="M0 168 C60 150, 90 120, 140 130 S220 80, 280 95 S400 40, 560 55 L560 220 L0 220 Z"
-        fill="url(#chartFill)"
-      />
-      <path
-        d="M0 168 C60 150, 90 120, 140 130 S220 80, 280 95 S400 40, 560 55"
+        d={paths.line}
         fill="none"
         stroke="#1f5bff"
         strokeWidth="2.5"
         strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );
+}
+
+function displayYesPrice(market: MarketSummary, history: PricePoint[]): number {
+  const last = history.length > 0 ? history[history.length - 1].p : null;
+  if (last !== null && Number.isFinite(last)) return last;
+  return market.yesPrice;
 }
 
 type MarketPredictPanelProps = {
@@ -87,7 +124,17 @@ export function MarketPredictPanel({ onBack }: MarketPredictPanelProps) {
 
   const [predictLoading, setPredictLoading] = useState(false);
   const [predictError, setPredictError] = useState<string | null>(null);
-  const [predictJson, setPredictJson] = useState<string | null>(null);
+  const [predictResult, setPredictResult] = useState<PredictResult | null>(null);
+
+  const [timeframe, setTimeframe] = useState<ChartTimeframe>("1D");
+  const [predictHorizon, setPredictHorizon] = useState<PredictHorizon>("1d");
+  const [priceHistory, setPriceHistory] = useState<PricePoint[]>([]);
+  const [chartLoading, setChartLoading] = useState(false);
+  const [chartError, setChartError] = useState<string | null>(null);
+  const chartGradientId = useMemo(
+    () => `chartFill-${selected?.slug ?? "empty"}`,
+    [selected?.slug],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -95,7 +142,7 @@ export function MarketPredictPanel({ onBack }: MarketPredictPanelProps) {
       setMarketsLoading(true);
       setMarketsError(null);
       try {
-        const res = await fetch("/api/markets?limit=200&offset=0");
+        const res = await fetch("/api/markets?limit=200&sort=trending");
         const data: unknown = await res.json();
         if (!res.ok) {
           const err =
@@ -136,28 +183,88 @@ export function MarketPredictPanel({ onBack }: MarketPredictPanelProps) {
     );
   }, [markets, query]);
 
+  useEffect(() => {
+    if (!selected?.clobTokenIds[0]) {
+      setPriceHistory([]);
+      setChartError(null);
+      setChartLoading(false);
+      return;
+    }
+
+    const tokenId = selected.clobTokenIds[0];
+    const controller = new AbortController();
+
+    async function loadHistory() {
+      setChartLoading(true);
+      setChartError(null);
+      try {
+        const res = await fetch(
+          `/api/price-history?tokenId=${encodeURIComponent(tokenId)}&timeframe=${timeframe}`,
+          { signal: controller.signal },
+        );
+        const data: unknown = await res.json();
+        if (!res.ok) {
+          const err =
+            data &&
+            typeof data === "object" &&
+            "error" in data &&
+            typeof (data as { error: unknown }).error === "string"
+              ? (data as { error: string }).error
+              : `Error ${res.status}`;
+          throw new Error(err);
+        }
+        const parsed = data as PriceHistoryResponse;
+        if (!controller.signal.aborted) {
+          setPriceHistory(Array.isArray(parsed.history) ? parsed.history : []);
+        }
+      } catch (e) {
+        if (controller.signal.aborted) return;
+        setPriceHistory([]);
+        setChartError(
+          e instanceof Error ? e.message : "Could not load price history.",
+        );
+      } finally {
+        if (!controller.signal.aborted) setChartLoading(false);
+      }
+    }
+
+    loadHistory();
+    return () => {
+      controller.abort();
+      setChartLoading(false);
+    };
+  }, [selected, timeframe]);
+
+  const liveYesPrice = selected
+    ? displayYesPrice(selected, priceHistory)
+    : null;
+  const priceDeltaPp = selected
+    ? Math.round(selected.priceChange1d * 100)
+    : 0;
+
   async function handlePredict() {
     if (!selected) return;
     setPredictLoading(true);
     setPredictError(null);
-    setPredictJson(null);
+    setPredictResult(null);
     try {
       const res = await fetch("/api/predict", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ market: selected }),
+        body: JSON.stringify({ market: selected, horizon: predictHorizon }),
       });
-      const data: unknown = await res.json();
-      setPredictJson(JSON.stringify(data, null, 2));
-      if (!res.ok) {
-        const msg =
-          data &&
-          typeof data === "object" &&
-          "error" in data &&
-          typeof (data as { error: unknown }).error === "string"
-            ? (data as { error: string }).error
-            : `Error ${res.status}`;
-        setPredictError(msg);
+      const data = (await res.json()) as PredictResult & { error?: string };
+      if (data.ok && data.direction) {
+        setPredictResult(data);
+        setPredictError(null);
+      } else {
+        setPredictResult(null);
+        setPredictError(
+          data.error ||
+            (typeof data === "object" && "error" in data && typeof data.error === "string"
+              ? data.error
+              : `Error ${res.status}`),
+        );
       }
     } catch (e) {
       setPredictError(e instanceof Error ? e.message : "Network error");
@@ -218,7 +325,11 @@ export function MarketPredictPanel({ onBack }: MarketPredictPanelProps) {
                 <MarketsList
                   filtered={filtered}
                   selected={selected}
-                  onSelect={setSelected}
+                  onSelect={(m) => {
+                    setSelected(m);
+                    setPredictResult(null);
+                    setPredictError(null);
+                  }}
                 />
               </MarketsScrollArea>
             )}
@@ -232,30 +343,93 @@ export function MarketPredictPanel({ onBack }: MarketPredictPanelProps) {
               <div className={styles.chartPanel}>
                 <div className={styles.chartTop}>
                   <div className={styles.probBlock}>
-                    <span className={styles.probWord}>si</span>
+                    <span className={styles.probWord}>Sí</span>
                     <div className={styles.probRow}>
                       <span className={styles.probValue}>
-                        {selected ? "46%" : "—"}
+                        {liveYesPrice !== null
+                          ? formatProbPercent(liveYesPrice)
+                          : "—"}
                       </span>
                       <span className={styles.probLabel}>probabilidad</span>
-                      {selected && <span className={styles.probDelta}>▲ 16%</span>}
                     </div>
+                    {selected && priceDeltaPp !== 0 && (
+                      <div className={styles.probChangeRow}>
+                        <span className={styles.probChangeLabel}>24h</span>
+                        <span
+                          className={`${styles.probDelta}${
+                            selected.priceChange1d < 0
+                              ? ` ${styles.probDeltaDown}`
+                              : ""
+                          }`}
+                        >
+                          {formatPriceDelta(selected.priceChange1d)}
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <span className={styles.platformTag}>Polymarket</span>
                 </div>
 
                 <div className={styles.chartCanvas}>
-                  <ChartMock />
+                  {!selected && (
+                    <div className={styles.chartOverlay}>
+                      Select a market to view price history
+                    </div>
+                  )}
+                  {selected && chartLoading && (
+                    <div className={styles.chartOverlay}>Loading chart…</div>
+                  )}
+                  {selected && !chartLoading && chartError && (
+                    <div
+                      className={`${styles.chartOverlay} ${styles.chartOverlayError}`}
+                    >
+                      {chartError}
+                    </div>
+                  )}
+                  {selected &&
+                    !chartLoading &&
+                    !chartError &&
+                    priceHistory.length >= 2 && (
+                      <MarketPriceChart
+                        points={priceHistory}
+                        gradientId={chartGradientId}
+                      />
+                    )}
+                  {selected &&
+                    !chartLoading &&
+                    !chartError &&
+                    priceHistory.length < 2 && (
+                      <div className={styles.chartOverlay}>
+                        Not enough price data for this range
+                      </div>
+                    )}
                 </div>
 
                 <div className={styles.chartFooter}>
                   <div className={styles.chartMetaLeft}>
-                    <span>$18,552 Vol.</span>
-                    <span>31 dic 2026</span>
+                    <span>
+                      {selected ? formatVolumeUsd(selected.volume) : "—"}
+                    </span>
+                    <span>
+                      {selected ? formatEndDate(selected.endDate) : "—"}
+                    </span>
                   </div>
                   <div className={styles.chartTimeframes}>
-                    {["1H", "6H", "1D", "1S", "1M", "TODO"].map((t) => (
-                      <button key={t} type="button" className={styles.timeframeBtn}>
+                    {CHART_TIMEFRAMES.map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        className={`${styles.timeframeBtn}${
+                          timeframe === t ? ` ${styles.timeframeBtnActive}` : ""
+                        }`}
+                        disabled={!selected}
+                        onClick={() => {
+                          setTimeframe(t);
+                          setPredictHorizon(chartTimeframeToHorizon(t));
+                          setPredictResult(null);
+                          setPredictError(null);
+                        }}
+                      >
                         {t}
                       </button>
                     ))}
@@ -270,8 +444,12 @@ export function MarketPredictPanel({ onBack }: MarketPredictPanelProps) {
                     <SummaryItem full label="Question" value={selected.question} />
                     <SummaryItem label="Slug" value={selected.slug || "—"} mono />
                     <SummaryItem
-                      label="Volume"
+                      label="Volume (total)"
                       value={selected.volume.toLocaleString("en")}
+                    />
+                    <SummaryItem
+                      label="Volume (24h)"
+                      value={selected.volume24hr.toLocaleString("en")}
                     />
                     <SummaryItem
                       full
@@ -291,6 +469,26 @@ export function MarketPredictPanel({ onBack }: MarketPredictPanelProps) {
             </div>
 
             <div className={styles.detailActions}>
+              <div className={styles.horizonPicker} role="group" aria-label="Horizonte de predicción">
+                <span className={styles.horizonPickerLabel}>Horizonte</span>
+                {PREDICT_HORIZONS.map((h) => (
+                  <button
+                    key={h.id}
+                    type="button"
+                    className={`${styles.horizonBtn}${
+                      predictHorizon === h.id ? ` ${styles.horizonBtnActive}` : ""
+                    }`}
+                    disabled={!selected || predictLoading}
+                    onClick={() => {
+                      setPredictHorizon(h.id);
+                      setPredictResult(null);
+                      setPredictError(null);
+                    }}
+                  >
+                    {h.label}
+                  </button>
+                ))}
+              </div>
               <button
                 type="button"
                 className={styles.prediktNowBtn}
@@ -311,15 +509,72 @@ export function MarketPredictPanel({ onBack }: MarketPredictPanelProps) {
         </section>
       </div>
 
-      {(predictError || predictJson) && (
+      {(predictError || predictResult) && (
         <div className={styles.inferenceCard}>
-          <h3 className={styles.inferenceTitle}>Inference response</h3>
+          <h3 className={styles.inferenceTitle}>
+            Predicción ML (
+            {predictResult?.horizon_label ?? horizonLabel(predictHorizon)})
+          </h3>
           {predictError && (
             <p className={`${styles.status} ${styles.error}`}>{predictError}</p>
           )}
-          {predictJson && <pre className={styles.pre}>{predictJson}</pre>}
+          {predictResult?.direction && (
+            <PredictionSummary result={predictResult} />
+          )}
         </div>
       )}
+    </div>
+  );
+}
+
+function PredictionSummary({ result }: { result: PredictResult }) {
+  const isUp = result.direction === "up";
+  const prob = isUp ? result.probability_up : result.probability_down;
+  const probPct =
+    prob !== undefined && Number.isFinite(prob)
+      ? `${(prob * 100).toFixed(1)}%`
+      : "—";
+
+  return (
+    <div className={styles.predictionBlock}>
+      <div
+        className={`${styles.predictionBadge} ${
+          isUp ? styles.predictionUp : styles.predictionDown
+        }`}
+      >
+        <span className={styles.predictionArrow} aria-hidden="true">
+          {isUp ? "↑" : "↓"}
+        </span>
+        <span className={styles.predictionLabel}>
+          {isUp ? "UP" : "DOWN"}
+        </span>
+      </div>
+      <dl className={styles.predictionMeta}>
+        <div>
+          <dt>Confianza</dt>
+          <dd>{probPct}</dd>
+        </div>
+        <div>
+          <dt>Precio actual (Sí)</dt>
+          <dd>
+            {result.current_price !== undefined
+              ? formatProbPercent(result.current_price)
+              : "—"}
+          </dd>
+        </div>
+        <div>
+          <dt>Modelo</dt>
+          <dd>{result.model ?? "—"}</dd>
+        </div>
+        <div>
+          <dt>Datos usados</dt>
+          <dd>{result.n_prices ?? "—"} días</dd>
+        </div>
+      </dl>
+      <p className={styles.predictionNote}>
+        Movimiento del precio Sí · umbral {(result.threshold ?? 0.5).toFixed(2)}
+        {result.as_of_date ? ` · serie al ${result.as_of_date.slice(0, 16).replace("T", " ")}` : ""}
+      </p>
     </div>
   );
 }
