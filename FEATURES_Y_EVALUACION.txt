@@ -1,0 +1,342 @@
+================================================================================
+  PREDIKT — Features generadas y criterios de evaluación
+  Proyecto: Predicción up/down en mercados Polymarket (barras diarias)
+================================================================================
+
+
+1. CONTEXTO DEL PROBLEMA
+
+El proyecto aborda una tarea de clasificación binaria supervisada. El modelo debe
+predecir si el precio del token YES en Polymarket subirá o no en un horizonte
+futuro. La clase "down" (etiqueta 0) significa que el precio no sube en ese
+plazo; la clase "up" (etiqueta 1) significa que sí sube. La etiqueta se define
+comparando el precio futuro con el precio del día actual: si el futuro es mayor,
+la etiqueta es 1; en caso contrario, 0.
+
+Existen dos horizontes de predicción. En el horizonte de un día (1d), se mira el
+precio del día siguiente. En el horizonte de una semana (1w), se compara con el
+precio dentro de siete días. Todas las variables de entrada se construyen solo
+a partir del historial de precios del mercado, sin usar noticias, redes sociales
+ni otros datos externos. Cada observación corresponde a un día de un mercado
+concreto. La forma en que esos precios se obtienen desde Polymarket se describe
+en la sección siguiente.
+
+
+2. OBTENCIÓN DE DATOS: POLYMARKET Y SUS APIs
+
+Los datos del proyecto provienen de Polymarket, una plataforma de mercados de
+predicción descentralizados en la que los usuarios compran y venden posiciones
+sobre si ocurrirá o no un evento (elecciones, deportes, macroeconomía, cripto,
+etc.). No se utilizan bases de datos de terceros ni feeds de noticias: toda la
+información numérica que alimenta el modelo sale de las APIs públicas que
+Polymarket expone para consultar mercados y precios. Esas APIs son gratuitas y no
+requieren clave de acceso; responden en JSON mediante peticiones HTTP estándar.
+
+Qué se mide en cada mercado
+
+Cada pregunta de mercado tiene dos resultados negociables, habitualmente "Sí" y
+"No". A cada lado le corresponde un token en el libro de órdenes centralizado
+(CLOB, Central Limit Order Book). El precio del token Sí (YES) se interpreta
+como la probabilidad implícita de que el evento ocurra: un valor de 0,65
+significa que el mercado precia un 65 % de probabilidad. Ese precio oscila entre
+0 y 1 a medida que entra nueva información o cambia la oferta y la demanda. En
+este proyecto solo se recoge y modela la serie histórica del YES, porque es la
+representación directa de la probabilidad del evento que interesa predecir.
+
+El proceso de obtención es en dos etapas, con dos servicios distintos: primero se
+descubre qué mercados existen y cuál es su identificador de precios; después se
+descarga el historial de cotizaciones de ese identificador. Sin la primera etapa
+no se puede llamar correctamente a la segunda.
+
+
+Gamma API: catálogo de mercados
+
+La Gamma API es el servicio de metadatos de Polymarket. Su URL base es
+https://gamma-api.polymarket.com. Sirve para listar mercados, leer sus preguntas,
+volumen, fechas y los identificadores técnicos necesarios para pedir precios.
+
+La consulta principal es al recurso /markets. Se pueden filtrar mercados activos
+o ya cerrados, acotar resultados por volumen mínimo o por fechas de cierre, y
+recorrer el listado por páginas usando parámetros de límite y desplazamiento
+(paginación), porque el número total de mercados supera lo que devuelve una sola
+respuesta.
+
+De cada mercado interesan sobre todo estos campos. El slug es el identificador
+legible en la URL del mercado (por ejemplo will-trump-win-the-2024-iowa-caucus).
+La question es el texto de la predicción. El volume resume cuánto se ha negociado
+y ayuda a priorizar mercados líquidos. Las fechas startDate y endDate indican
+cuándo abrió y cuándo cierra o cerró el mercado. El campo clobTokenIds es
+crucial: contiene dos identificadores largos, uno para el token YES y otro para el
+NO. Esos identificadores son la llave que enlaza el catálogo con la API de
+precios; sin ellos no es posible descargar la serie histórica.
+
+En la práctica, la recolección del proyecto prioriza mercados con historial
+utilizable: suelen elegirse mercados cerrados o con volumen relevante y fechas de
+cierre recientes, porque en mercados muy antiguos la API de precios a menudo ya
+no devuelve datos o devuelve series incompletas. El catálogo reunido queda
+guardado localmente como referencia de todos los mercados intentados (del orden
+de quinientos en el dataset actual).
+
+
+CLOB API: historial de precios
+
+La CLOB API es el servicio de cotizaciones del libro de órdenes. Su URL base es
+https://clob.polymarket.com. A diferencia de Gamma, aquí no se listan preguntas
+sino series temporales de precio para un token concreto.
+
+El endpoint usado es /prices-history. La petición debe incluir el identificador
+del token YES obtenido en el paso anterior (en la documentación de Polymarket
+suele pasarse como parámetro market). Otros parámetros controlan el rango y la
+granularidad. El intervalo max solicita todo el historial disponible para ese
+token. El parámetro fidelity indica la resolución en minutos: el valor 1440
+corresponde a barras de un día (1440 minutos = 24 horas). Esa granularidad diaria
+es la que usa el proyecto de principio a fin, porque es la resolución que la API
+ofrece de forma consistente para construir series largas; resoluciones más finas
+(horarias o intradía) no se emplean en el entrenamiento clásico ni en la
+predicción del producto.
+
+La respuesta trae una lista de puntos históricos. Cada punto incluye una marca de
+tiempo (en segundos desde época Unix) y un precio en ese instante. Esos puntos
+se agregan a nivel de día calendario: para cada fecha se conserva un único
+precio diario (típicamente el último del día en UTC). Así se obtiene una serie
+regular de un precio por día, asociada al slug y a la pregunta del mercado para
+poder identificarla después. Cada mercado genera su propia serie guardada por
+separado; en el repositorio hay del orden de quinientos de esas series.
+
+
+Flujo completo de recolección
+
+El flujo lógico, de extremo a extremo, es el siguiente. Primero se consulta la
+Gamma API para construir la lista de mercados objetivo y extraer, de cada uno, el
+identificador del token YES. Segundo, para cada mercado de esa lista, se consulta
+la CLOB API con ese identificador y fidelity diario, y se almacena la serie de
+precios resultante. Tercero, se revisa la cobertura: cuántos días tiene cada
+serie, si hay huecos o duplicados, y si el mercado cumple un mínimo de historial
+(por ejemplo al menos treinta precios diarios) para poder calcular indicadores y
+entrenar. Solo los mercados que pasan ese filtro entran en la matriz de
+entrenamiento; el resto se descarta por datos insuficientes aunque se hubieran
+descargado.
+
+Cuando el sistema hace una predicción en vivo sobre un mercado que el usuario
+elige en la aplicación, el origen de los datos es el mismo: se vuelve a consultar
+Gamma para localizar el mercado y su token YES, y acto seguido CLOB para traer el
+historial diario actualizado hasta el último día disponible. Con esa serie recién
+descargada se calculan las variables del día actual y se alimenta el modelo. Así
+entrenamiento y producción usan la misma definición de dato: precio diario del
+YES en Polymarket.
+
+
+Resumen del dataset obtenido
+
+Tras aplicar los filtros de cobertura y construir las variables, el panel de
+trabajo del proyecto reúne unas 26.359 observaciones (día por mercado), procedentes
+de 335 mercados con historial suficiente, mientras que unos 165 mercados
+descargados quedaron fuera por series demasiado cortas. Las fechas cubren
+aproximadamente de marzo de 2023 a abril de 2026. A partir de esas series diarias
+de precio comienza la ingeniería de características descrita en la sección
+siguiente.
+
+
+3. LAS OCHO FEATURES GENERADAS
+
+El código calcula ocho variables por cada fila del panel (un día de un mercado).
+A continuación se explica cada una en lenguaje claro, indicando también el nombre
+técnico que aparece en el código y en los archivos CSV.
+
+Retorno a un día (ret_1d)
+
+Esta variable mide cuánto cambió el precio respecto al día anterior, expresado
+como retorno logarítmico. Se calcula tomando el logaritmo del precio de hoy y
+restando el logaritmo del precio de ayer. Si el resultado es positivo, el precio
+subió en las últimas veinticuatro horas; si es negativo, bajó. Es la señal de
+movimiento más inmediata y sirve de base para otras medidas, como la volatilidad
+de siete días. En el código se usa un valor muy pequeño (1e-8) sumado al precio
+para evitar errores cuando el precio está muy cerca de cero.
+
+Retorno a tres días (ret_3d)
+
+El retorno a tres días responde a la pregunta: ¿cuánto ha cambiado el precio
+respecto a hace tres días? Se obtiene de la misma forma que el retorno a un día,
+pero comparando el precio actual con el de hace tres barras (tres días en datos
+diarios). Su utilidad es suavizar el ruido de un solo día: a veces un mercado
+tiene un pico o una caída aislada que no refleja una tendencia; mirar tres días
+ayuda a captar un impulso reciente un poco más estable.
+
+Retorno a siete días (ret_7d)
+
+El retorno a siete días es el cambio logarítmico del precio frente al valor de
+hace una semana (siete días hábiles de serie diaria). Equivale, en la práctica,
+a un rendimiento semanal del mercado de predicción. Indica si, en el último
+tramo de una semana, el mercado ha tendido al alza o a la baja. Complementa al
+retorno a un día y al de tres días: mientras ret_1d es muy reactivo, ret_7d
+resume una tendencia de mediano plazo dentro de cada mercado.
+
+Media móvil de siete días (ma7)
+
+La media móvil de siete días es el promedio simple del precio en los últimos siete
+días. No mide un cambio, sino un nivel de referencia suavizado. Si el precio
+actual está por encima de esa media, el mercado lleva un tramo reciente relativamente
+fuerte; si está por debajo, lleva un tramo débil. Al inicio de cada serie hay pocos
+días disponibles; el cálculo permite usar al menos tres días para no perder
+demasiadas observaciones al arranque.
+
+Media móvil de catorce días (ma14)
+
+La media móvil de catorce días funciona igual que la de siete, pero con una
+ventana de dos semanas. Ofrece una referencia de tendencia más lenta y estable.
+Junto con ma7 permite al modelo distinguir movimientos puntuales de un día de
+cambios que se mantienen durante varias semanas.
+
+Ratio de medias móviles (ma_ratio)
+
+El ratio de medias divide la media de siete días entre la media de catorce días.
+Si el cociente es mayor que uno, la tendencia corta (una semana) está por encima
+de la tendencia más larga (dos semanas), lo que suele interpretarse como momentum
+alcista reciente. Si es menor que uno, la tendencia corta va por debajo de la
+larga, señal de debilidad reciente. Concentra en un solo número la relación entre
+ambas medias sin que el modelo tenga que combinarlas manualmente.
+
+Volatilidad a siete días (vol7)
+
+La volatilidad a siete días mide cuán dispersos han sido los retornos diarios en
+la última semana. Se calcula como la desviación estándar del retorno a un día en
+una ventana móvil de siete días. Un valor alto indica que el precio ha oscilado
+mucho día a día; un valor bajo indica una serie más tranquila. Es relevante
+porque mercados muy volátiles y mercados muy estables no se comportan igual ante
+las mismas señales de precio.
+
+Precio actual (price)
+
+El precio actual es simplemente el valor del token YES en ese día, es decir, la
+probabilidad implícita de que ocurra el evento (entre 0 y 1). No es un indicador
+derivado, pero es informativo: un mercado al 0,05 o al 0,95 suele moverse de
+forma distinta a uno alrededor del 0,50. Incluir el nivel absoluto ayuda al modelo
+a contextualizar retornos y medias según en qué zona del rango está el mercado.
+
+Tratamiento de datos faltantes y filtrado
+
+Al calcular medias y retornos, los primeros días de cada mercado generan valores
+no definidos hasta acumular suficiente historial. Esas filas se eliminan antes de
+entrenar. Además, solo entran mercados con al menos treinta precios diarios y,
+tras generar features, con al menos unas quince filas válidas por mercado. La
+matriz final reúne todas las filas día por mercado con las ocho variables y la
+etiqueta correspondiente.
+
+
+4. CONJUNTOS DE ENTRENAMIENTO, VALIDACIÓN Y PRUEBA
+
+Los datos se organizan en un panel: cada fila es un día de un mercado con sus
+ocho features y su etiqueta. La división entre entrenamiento y prueba es
+temporal y se hace mercado por mercado, sin mezclar fechas al azar. En cada
+serie, el 70 % de los días más antiguos forman el conjunto de entrenamiento y el
+30 % más reciente el de prueba. Así se evita que el modelo entrene con información
+del futuro que luego evaluaría, un error conocido como fuga de datos temporales.
+
+En el horizonte de un día, el entrenamiento suma unas 18.302 filas y la prueba
+unas 8.057, procedentes de 335 mercados elegibles. Aproximadamente el 21 % de
+las filas tienen etiqueta "up"; el resto son "down", lo que produce un desbalance
+marcado, sobre todo en el conjunto de prueba.
+
+Cuando se comparan varios algoritmos (script de comparación de modelos), del
+bloque de entrenamiento global se reserva un tramo final como validación: el
+15 % de las filas de train o un mínimo de 500 filas, lo que sea mayor. El modelo
+se ajusta con el train anterior a ese tramo; el tramo final sirve para elegir el
+umbral de probabilidad con el que se decide "up" o "down". La evaluación que se
+reporta como resultado final se hace siempre en el 30 % de prueba temporal, con
+el umbral ya fijado en validación.
+
+
+5. CRITERIOS DE EVALUACIÓN EMPLEADOS
+
+Baseline de mayoría
+
+Antes de juzgar un modelo aprendido, se calcula un referente trivial: predecir
+siempre la clase más frecuente en el conjunto de prueba, que casi siempre es
+"down". Ese baseline alcanza alrededor del 78 % de exactitud en el horizonte de
+un día, pero no detecta ninguna subida real. Cualquier modelo que solo iguale ese
+porcentaje sin mejorar otras métricas no aporta valor predictivo útil.
+
+Exactitud (accuracy)
+
+La exactitud es la proporción de predicciones correctas sobre el total de filas
+de prueba. Es la métrica por defecto para elegir el mejor modelo entre regresión
+logística, bosque aleatorio, gradient boosting y XGBoost. Su límite es clara en
+datos desbalanceados: un modelo que nunca predice "up" puede tener casi la misma
+exactitud que el baseline porque la mayoría de los días efectivamente no suben.
+Por eso debe interpretarse junto con otras medidas.
+
+Exactitud balanceada (balanced accuracy)
+
+La exactitud balanceada promedia el recall (sensibilidad) de cada clase por
+separado: qué fracción de los "down" reales y qué fracción de los "up" reales
+acertó el modelo. Penaliza ignorar la clase minoritaria. Valores cercanos a 0,50
+indican un desempeño parecido a adivinar de forma equilibrada entre subidas y
+bajadas. Puede usarse como criterio alternativo para seleccionar el mejor modelo
+en lugar de la exactitud simple.
+
+F1 macro
+
+El F1 macro es el promedio del F1 score de las clases "down" y "up", sin dar más
+peso a la clase más numerosa. Resume el equilibrio entre precisión y recall en
+ambas direcciones. Resulta útil cuando interesa tanto no perderse subidas reales
+como no lanzar demasiadas alertas de subida falsas.
+
+Matriz de confusión
+
+La matriz de confusión cuenta, para la prueba, cuántos casos reales de bajada
+fueron predichos como bajada o como subida, y cuántos casos reales de subida
+fueron predichos en cada categoría. En el mejor modelo del horizonte de un día
+(gradient boosting), casi todas las predicciones son "down": de miles de subidas
+reales solo se detectan unas veinte. Esa tabla es indispensable para ver más allá
+del porcentaje global de aciertos.
+
+Informe de clasificación (classification report)
+
+El informe desglosa por clase la precisión (de lo predicho como "up", cuánto fue
+correcto), el recall (de los "up" reales, cuántos se detectaron) y el F1, junto
+con el número de ejemplos (support). Permite leer con detalle el comportamiento
+sobre la clase minoritaria.
+
+Brier score
+
+El Brier score mide la calidad de las probabilidades predichas, no solo la
+etiqueta final. Compara la probabilidad asignada a "up" con la etiqueta real (0 o
+1). Cero sería calibración perfecta; alrededor de 0,25 equivale a un predictor
+aleatorio en un problema binario balanceado. En prueba, gradient boosting obtuvo
+el Brier más bajo (aproximadamente 0,164) entre los modelos comparados, lo que
+indica mejores probabilidades aunque la decisión binaria siga siendo conservadora.
+
+Umbral de decisión
+
+Por defecto, muchos clasificadores usan probabilidad 0,5 para decidir "up". Aquí
+se busca un umbral mejor en el conjunto de validación, probando 51 valores entre
+0,25 y 0,75 y eligiendo el que maximiza la métrica configurada (por defecto la
+exactitud en validación). El modelo ganador en un día usa umbral 0,53, no 0,5.
+Ese valor se aplica luego en prueba sin volver a ajustarlo ahí.
+
+Modelos comparados y desbalanceo
+
+Se entrenan cuatro tipos de clasificador. La regresión logística estandariza las
+variables y usa pesos balanceados por clase. El bosque aleatorio usa trescientos
+árboles con pesos balanceados por submuestra. Gradient boosting usa doscientos
+estimadores con tasa de aprendizaje 0,05. XGBoost ajusta un peso positivo según
+la ratio entre ejemplos negativos y positivos en entrenamiento. El criterio por
+defecto seleccionó gradient boosting en el horizonte de un día por mayor exactitud
+en prueba (aproximadamente 78,0 %), muy cerca del baseline del 78,0 %, con
+exactitud balanceada 0,504 y F1 macro 0,449. XGBoost tuvo la mayor exactitud
+balanceada (0,511) y F1 macro (0,474) entre los modelos entrenados, aunque no fue
+el elegido con el criterio por defecto.
+
+Conclusión sobre la evaluación
+
+Los resultados muestran que la exactitud sola puede engañar: el modelo aprendido
+casi replica al baseline que siempre dice "down". Para valorar el sistema con
+honestidad académica conviene priorizar la exactitud balanceada, el F1 macro,
+la matriz de confusión y el Brier score, además de la exactitud bruta. El
+las APIs públicas de Polymarket (Gamma y CLOB), las métricas guardadas en
+processed/models/metrics.json y el pipeline de features y evaluación del
+proyecto.
+
+================================================================================
+  Fin del documento
+================================================================================
