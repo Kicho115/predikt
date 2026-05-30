@@ -20,6 +20,7 @@ import type {
   ChartTimeframe,
   MarketSummary,
   PredictHorizon,
+  PredictModelId,
   PredictResult,
   PricePoint,
 } from "@/lib/types";
@@ -43,9 +44,13 @@ function SummaryItem({
   mono?: boolean;
 }) {
   return (
-    <div className={`${styles.summaryItem}${full ? ` ${styles.summaryItemFull}` : ""}`}>
+    <div
+      className={`${styles.summaryItem}${full ? ` ${styles.summaryItemFull}` : ""}`}
+    >
       <dt className={styles.summaryLabel}>{label}</dt>
-      <dd className={`${styles.summaryValue}${mono ? ` ${styles.summaryValueMono}` : ""}`}>
+      <dd
+        className={`${styles.summaryValue}${mono ? ` ${styles.summaryValueMono}` : ""}`}
+      >
         {value}
       </dd>
     </div>
@@ -55,6 +60,11 @@ function SummaryItem({
 type PriceHistoryResponse = {
   history: PricePoint[];
 };
+
+const MODEL_OPTIONS: Array<{ id: PredictModelId; label: string }> = [
+  { id: "lstm_baseline", label: "LSTM baseline" },
+  { id: "lstm_attention", label: "LSTM attention" },
+];
 
 function MarketPriceChart({
   points,
@@ -124,10 +134,14 @@ export function MarketPredictPanel({ onBack }: MarketPredictPanelProps) {
 
   const [predictLoading, setPredictLoading] = useState(false);
   const [predictError, setPredictError] = useState<string | null>(null);
-  const [predictResult, setPredictResult] = useState<PredictResult | null>(null);
+  const [predictResult, setPredictResult] = useState<PredictResult | null>(
+    null,
+  );
 
   const [timeframe, setTimeframe] = useState<ChartTimeframe>("1D");
   const [predictHorizon, setPredictHorizon] = useState<PredictHorizon>("1d");
+  const [predictModel, setPredictModel] =
+    useState<PredictModelId>("lstm_baseline");
   const [priceHistory, setPriceHistory] = useState<PricePoint[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
   const [chartError, setChartError] = useState<string | null>(null);
@@ -160,7 +174,9 @@ export function MarketPredictPanel({ onBack }: MarketPredictPanelProps) {
         }
       } catch (e) {
         if (!cancelled) {
-          setMarketsError(e instanceof Error ? e.message : "Could not load markets.");
+          setMarketsError(
+            e instanceof Error ? e.message : "Could not load markets.",
+          );
           setMarkets([]);
         }
       } finally {
@@ -238,9 +254,7 @@ export function MarketPredictPanel({ onBack }: MarketPredictPanelProps) {
   const liveYesPrice = selected
     ? displayYesPrice(selected, priceHistory)
     : null;
-  const priceDeltaPp = selected
-    ? Math.round(selected.priceChange1d * 100)
-    : 0;
+  const priceDeltaPp = selected ? Math.round(selected.priceChange1d * 100) : 0;
 
   async function handlePredict() {
     if (!selected) return;
@@ -251,7 +265,11 @@ export function MarketPredictPanel({ onBack }: MarketPredictPanelProps) {
       const res = await fetch("/api/predict", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ market: selected, horizon: predictHorizon }),
+        body: JSON.stringify({
+          market: selected,
+          horizon: predictHorizon,
+          model: predictModel,
+        }),
       });
       const data = (await res.json()) as PredictResult & { error?: string };
       if (data.ok && data.direction) {
@@ -261,7 +279,9 @@ export function MarketPredictPanel({ onBack }: MarketPredictPanelProps) {
         setPredictResult(null);
         setPredictError(
           data.error ||
-            (typeof data === "object" && "error" in data && typeof data.error === "string"
+            (typeof data === "object" &&
+            "error" in data &&
+            typeof data.error === "string"
               ? data.error
               : `Error ${res.status}`),
         );
@@ -296,8 +316,17 @@ export function MarketPredictPanel({ onBack }: MarketPredictPanelProps) {
             disabled={marketsLoading || !!marketsError}
             autoComplete="off"
           />
-          <button type="button" className={styles.searchBtn} aria-label="Search">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+          <button
+            type="button"
+            className={styles.searchBtn}
+            aria-label="Search"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+            >
               <circle cx="11" cy="11" r="7" />
               <path d="M20 20l-3.5-3.5" strokeLinecap="round" />
             </svg>
@@ -313,9 +342,13 @@ export function MarketPredictPanel({ onBack }: MarketPredictPanelProps) {
         <aside className={styles.panelCol}>
           <h2 className={styles.sectionTitle}>Active Trending markets</h2>
           <div className={styles.marketsCard}>
-            {marketsLoading && <p className={styles.status}>Loading markets…</p>}
+            {marketsLoading && (
+              <p className={styles.status}>Loading markets…</p>
+            )}
             {marketsError && (
-              <p className={`${styles.status} ${styles.error}`}>{marketsError}</p>
+              <p className={`${styles.status} ${styles.error}`}>
+                {marketsError}
+              </p>
             )}
             {!marketsLoading && !marketsError && filtered.length === 0 && (
               <p className={styles.empty}>No matching markets.</p>
@@ -441,8 +474,16 @@ export function MarketPredictPanel({ onBack }: MarketPredictPanelProps) {
                 <h3 className={styles.sidebarTitle}>Selected market</h3>
                 {selected ? (
                   <dl className={styles.summaryGrid}>
-                    <SummaryItem full label="Question" value={selected.question} />
-                    <SummaryItem label="Slug" value={selected.slug || "—"} mono />
+                    <SummaryItem
+                      full
+                      label="Question"
+                      value={selected.question}
+                    />
+                    <SummaryItem
+                      label="Slug"
+                      value={selected.slug || "—"}
+                      mono
+                    />
                     <SummaryItem
                       label="Volume (total)"
                       value={selected.volume.toLocaleString("en")}
@@ -463,20 +504,52 @@ export function MarketPredictPanel({ onBack }: MarketPredictPanelProps) {
                     />
                   </dl>
                 ) : (
-                  <p className={styles.sidebarEmpty}>Choose a market from the list.</p>
+                  <p className={styles.sidebarEmpty}>
+                    Choose a market from the list.
+                  </p>
                 )}
               </aside>
             </div>
 
             <div className={styles.detailActions}>
-              <div className={styles.horizonPicker} role="group" aria-label="Horizonte de predicción">
+              <div
+                className={styles.horizonPicker}
+                role="group"
+                aria-label="Modelo"
+              >
+                <span className={styles.horizonPickerLabel}>Modelo</span>
+                {MODEL_OPTIONS.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    className={`${styles.horizonBtn}${
+                      predictModel === m.id ? ` ${styles.horizonBtnActive}` : ""
+                    }`}
+                    disabled={!selected || predictLoading}
+                    onClick={() => {
+                      setPredictModel(m.id);
+                      setPredictResult(null);
+                      setPredictError(null);
+                    }}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+              <div
+                className={styles.horizonPicker}
+                role="group"
+                aria-label="Horizonte de predicción"
+              >
                 <span className={styles.horizonPickerLabel}>Horizonte</span>
                 {PREDICT_HORIZONS.map((h) => (
                   <button
                     key={h.id}
                     type="button"
                     className={`${styles.horizonBtn}${
-                      predictHorizon === h.id ? ` ${styles.horizonBtnActive}` : ""
+                      predictHorizon === h.id
+                        ? ` ${styles.horizonBtnActive}`
+                        : ""
                     }`}
                     disabled={!selected || predictLoading}
                     onClick={() => {
@@ -545,9 +618,7 @@ function PredictionSummary({ result }: { result: PredictResult }) {
         <span className={styles.predictionArrow} aria-hidden="true">
           {isUp ? "↑" : "↓"}
         </span>
-        <span className={styles.predictionLabel}>
-          {isUp ? "UP" : "DOWN"}
-        </span>
+        <span className={styles.predictionLabel}>{isUp ? "UP" : "DOWN"}</span>
       </div>
       <dl className={styles.predictionMeta}>
         <div>
@@ -573,7 +644,9 @@ function PredictionSummary({ result }: { result: PredictResult }) {
       </dl>
       <p className={styles.predictionNote}>
         Movimiento del precio Sí · umbral {(result.threshold ?? 0.5).toFixed(2)}
-        {result.as_of_date ? ` · serie al ${result.as_of_date.slice(0, 16).replace("T", " ")}` : ""}
+        {result.as_of_date
+          ? ` · serie al ${result.as_of_date.slice(0, 16).replace("T", " ")}`
+          : ""}
       </p>
     </div>
   );
@@ -586,7 +659,10 @@ function MarketsScrollArea({ children }: { children: React.ReactNode }) {
     const el = scrollRef.current;
     if (!el) return;
     const amount = Math.max(160, el.clientHeight * 0.75);
-    el.scrollBy({ top: direction === "up" ? -amount : amount, behavior: "smooth" });
+    el.scrollBy({
+      top: direction === "up" ? -amount : amount,
+      behavior: "smooth",
+    });
   }
 
   return (
@@ -644,8 +720,12 @@ function MarketsList({
               className={`${styles.marketRow} ${isSel ? styles.marketRowSelected : ""}`}
               onClick={() => onSelect(m)}
             >
-              <span className={styles.marketQuestion}>{m.question || "(No title)"}</span>
-              {m.slug ? <span className={styles.marketSlug}>{m.slug}</span> : null}
+              <span className={styles.marketQuestion}>
+                {m.question || "(No title)"}
+              </span>
+              {m.slug ? (
+                <span className={styles.marketSlug}>{m.slug}</span>
+              ) : null}
             </button>
           </li>
         );

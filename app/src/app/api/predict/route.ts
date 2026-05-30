@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { chartTimeframeToHorizon } from "@/lib/horizons";
-import { localInferenceConfigured, runLocalInference } from "@/lib/localInference";
+import {
+  localInferenceConfigured,
+  runLocalInference,
+} from "@/lib/localInference";
 import type {
   MarketSummary,
   PredictHorizon,
+  PredictModelId,
   PredictRequestBody,
 } from "@/lib/types";
 
@@ -24,7 +28,8 @@ function isMarketSummary(x: unknown): x is MarketSummary {
     (m.yesPrice === undefined ||
       (typeof m.yesPrice === "number" && Number.isFinite(m.yesPrice))) &&
     (m.priceChange1d === undefined ||
-      (typeof m.priceChange1d === "number" && Number.isFinite(m.priceChange1d))) &&
+      (typeof m.priceChange1d === "number" &&
+        Number.isFinite(m.priceChange1d))) &&
     (m.endDate === undefined ||
       m.endDate === null ||
       typeof m.endDate === "string") &&
@@ -40,8 +45,18 @@ function parseHorizon(raw: unknown): PredictHorizon {
   return chartTimeframeToHorizon("1d");
 }
 
-async function proxyToInferenceService(body: unknown): Promise<NextResponse> {
+function parseModel(raw: unknown): PredictModelId | undefined {
+  if (raw === "lstm_baseline" || raw === "lstm_attention") return raw;
+  return undefined;
+}
+
+async function proxyToInferenceService(
+  body: unknown,
+  model?: PredictModelId,
+): Promise<NextResponse> {
   const inferenceUrl = process.env.INFERENCE_API_URL!.trim();
+  const url = new URL(inferenceUrl);
+  if (model) url.searchParams.set("model", model);
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Accept: "application/json",
@@ -50,7 +65,7 @@ async function proxyToInferenceService(body: unknown): Promise<NextResponse> {
   if (key) headers.Authorization = `Bearer ${key}`;
 
   try {
-    const res = await fetch(inferenceUrl, {
+    const res = await fetch(url.toString(), {
       method: "POST",
       headers,
       body: JSON.stringify(body),
@@ -82,22 +97,26 @@ export async function POST(req: NextRequest) {
   }
 
   const payload = body as PredictRequestBody | null;
-  if (!payload || typeof payload !== "object" || !isMarketSummary(payload.market)) {
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    !isMarketSummary(payload.market)
+  ) {
     return NextResponse.json(
       {
-        error:
-          "Body must be { market: { ... }, horizon?: 1d|1w }",
+        error: "Body must be { market: { ... }, horizon?: 1d|1w }",
       },
       { status: 400 },
     );
   }
 
   const horizon = parseHorizon(payload.horizon);
-  const requestBody = { ...payload, horizon };
+  const model = parseModel(payload.model);
+  const requestBody = { ...payload, horizon, model };
 
   const inferenceUrl = process.env.INFERENCE_API_URL?.trim();
   if (inferenceUrl) {
-    return proxyToInferenceService(requestBody);
+    return proxyToInferenceService(requestBody, model);
   }
 
   if (!localInferenceConfigured()) {
