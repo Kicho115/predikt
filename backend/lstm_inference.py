@@ -6,12 +6,14 @@ from pathlib import Path
 import os
 from typing import Any
 
+import joblib
 import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
 
-from src.horizons import get_horizon
+from src.horizons import feature_cols_for, get_horizon
+from src.inference import predict_from_price_frame as sk_predict_from_price_frame
 from src.polymarket import PolymarketClient
 
 DEFAULT_MODEL_ID = "lstm_baseline"
@@ -28,6 +30,24 @@ MODEL_SPECS: dict[str, dict[str, str]] = {
         "file": "lstm_attention.pt",
         "kind": "attention",
     },
+}
+
+SK_MODEL_SPECS: dict[str, dict[str, str]] = {
+    "sk_model_rf": {
+        "label": "SK random forest",
+        "file": "model_RandomForest.pkl",
+        "horizon_id": "1d",
+    },
+    "sk_model_gb": {
+        "label": "SK gradient boosting",
+        "file": "model_GradientBoosting.pkl",
+        "horizon_id": "1d",
+    },
+}
+
+MODEL_ALIASES: dict[str, str] = {
+    "model_RandomForest": "sk_model_rf",
+    "model_GradientBoosting": "sk_model_gb",
 }
 
 
@@ -125,9 +145,26 @@ def list_available_models() -> list[dict[str, Any]]:
                 "label": spec["label"],
                 "file": spec["file"],
                 "available": path.is_file(),
+                "type": "lstm",
+            }
+        )
+    for model_id, spec in SK_MODEL_SPECS.items():
+        path = model_dir / spec["file"]
+        out.append(
+            {
+                "id": model_id,
+                "label": spec["label"],
+                "file": spec["file"],
+                "available": path.is_file(),
+                "type": "sklearn",
+                "horizon": spec.get("horizon_id"),
             }
         )
     return out
+
+
+def resolve_model_id(model_id: str) -> str:
+    return MODEL_ALIASES.get(model_id, model_id)
 
 
 def load_model_bundle(model_id: str) -> ModelBundle:
@@ -175,6 +212,36 @@ def load_model_bundle(model_id: str) -> ModelBundle:
     )
     _MODEL_CACHE[model_id] = bundle
     return bundle
+
+
+def load_sklearn_bundle(
+    model_id: str,
+    horizon_id: str | None = None,
+) -> tuple[dict[str, Any], Any, dict[str, str]]:
+    if model_id not in SK_MODEL_SPECS:
+        raise KeyError(f"Unknown model id '{model_id}'.")
+
+    spec = SK_MODEL_SPECS[model_id]
+    path = get_model_dir() / spec["file"]
+    if not path.is_file():
+        raise FileNotFoundError(f"Missing model file: {path}")
+
+    obj = joblib.load(path)
+    if isinstance(obj, dict) and "model" in obj:
+        bundle: dict[str, Any] = dict(obj)
+    else:
+        bundle = {"model": obj}
+
+    bundle.setdefault("model_name", spec["label"])
+
+    raw_horizon = bundle.get("horizon") or spec.get("horizon_id") or horizon_id
+    horizon = get_horizon(raw_horizon)
+    if not bundle.get("feature_cols"):
+        bundle["feature_cols"] = feature_cols_for(horizon)
+    bundle.setdefault("threshold", DEFAULT_THRESHOLD)
+    bundle["horizon"] = horizon.id
+
+    return bundle, horizon, spec
 
 
 def fetch_daily_prices(token_id: str, client: PolymarketClient | None = None) -> pd.DataFrame:
@@ -369,14 +436,12 @@ def predict_market_payload(
             "code": "MISSING_TOKEN",
         }
 
-    try:
-        bundle = load_model_bundle(model_id)
-    except KeyError as exc:
-        return {"ok": False, "error": str(exc), "code": "MODEL_NOT_FOUND"}
-    except FileNotFoundError as exc:
-        return {"ok": False, "error": str(exc), "code": "MODEL_NOT_FOUND"}
-    except Exception as exc:
-        return {"ok": False, "error": f"Failed to load model: {exc}", "code": "MODEL_LOAD_ERROR"}
+    resolved_id = resolve_model_id(model_id)
+    use_lstm = resolved_id in MODEL_SPECS
+    use_sklearn = resolved_id in SK_MODEL_SPECS
+
+    if not use_lstm and not use_sklearn:
+        return {"ok": False, "error": f"Unknown model id '{model_id}'.", "code": "MODEL_NOT_FOUND"}
 
     token_id = str(token_ids[0])
     api = client or PolymarketClient(request_delay=0.0)
@@ -390,7 +455,47 @@ def predict_market_payload(
             "code": "CLOB_FETCH_ERROR",
         }
 
-    result = predict_from_prices(prices, bundle, horizon_id=horizon_id)
+    if use_lstm:
+        try:
+            bundle = load_model_bundle(resolved_id)
+        except KeyError as exc:
+            return {"ok": False, "error": str(exc), "code": "MODEL_NOT_FOUND"}
+        except FileNotFoundError as exc:
+            return {"ok": False, "error": str(exc), "code": "MODEL_NOT_FOUND"}
+        except Exception as exc:
+            return {
+                "ok": False,
+                "error": f"Failed to load model: {exc}",
+                "code": "MODEL_LOAD_ERROR",
+            }
+
+        result = predict_from_prices(prices, bundle, horizon_id=horizon_id)
+    else:
+        try:
+            sk_bundle, horizon, spec = load_sklearn_bundle(resolved_id, horizon_id=horizon_id)
+        except KeyError as exc:
+            return {"ok": False, "error": str(exc), "code": "MODEL_NOT_FOUND"}
+        except FileNotFoundError as exc:
+            return {"ok": False, "error": str(exc), "code": "MODEL_NOT_FOUND"}
+        except Exception as exc:
+            return {
+                "ok": False,
+                "error": f"Failed to load model: {exc}",
+                "code": "MODEL_LOAD_ERROR",
+            }
+
+        result = sk_predict_from_price_frame(
+            prices,
+            sk_bundle,
+            horizon=horizon,
+            slug=str(market.get("slug") or ""),
+            question=str(market.get("question") or ""),
+        )
+        if result.get("ok"):
+            result["model"] = resolved_id
+            result["model_label"] = spec["label"]
+            result["horizon"] = horizon.id
+            result["horizon_label"] = horizon.label
     result.update(
         {
             "token_id": token_id,

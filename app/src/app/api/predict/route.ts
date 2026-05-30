@@ -46,8 +46,9 @@ function parseHorizon(raw: unknown): PredictHorizon {
 }
 
 function parseModel(raw: unknown): PredictModelId | undefined {
-  if (raw === "lstm_baseline" || raw === "lstm_attention") return raw;
-  return undefined;
+  if (typeof raw !== "string") return undefined;
+  const trimmed = raw.trim();
+  return trimmed ? trimmed : undefined;
 }
 
 async function proxyToInferenceService(

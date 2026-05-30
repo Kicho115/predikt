@@ -16,7 +16,7 @@ export type ChartTimeframe = "1D" | "1W" | "1M" | "ALL";
 
 export type PredictHorizon = "1d" | "1w";
 
-export type PredictModelId = "lstm_baseline" | "lstm_attention";
+export type PredictModelId = string;
 
 export type PricePoint = {
   t: number;
@@ -27,6 +27,14 @@ export type PredictRequestBody = {
   market: MarketSummary;
   horizon?: PredictHorizon;
   model?: PredictModelId;
+};
+
+export type ModelInfo = {
+  id: string;
+  label?: string;
+  available?: boolean;
+  type?: string;
+  horizon?: PredictHorizon | string;
 };
 
 export type PredictResult = {

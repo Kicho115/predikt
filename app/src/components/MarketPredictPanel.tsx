@@ -19,6 +19,7 @@ import {
 import type {
   ChartTimeframe,
   MarketSummary,
+  ModelInfo,
   PredictHorizon,
   PredictModelId,
   PredictResult,
@@ -61,9 +62,11 @@ type PriceHistoryResponse = {
   history: PricePoint[];
 };
 
-const MODEL_OPTIONS: Array<{ id: PredictModelId; label: string }> = [
-  { id: "lstm_baseline", label: "LSTM baseline" },
-  { id: "lstm_attention", label: "LSTM attention" },
+const FALLBACK_MODELS: ModelInfo[] = [
+  { id: "lstm_baseline", label: "LSTM baseline", type: "lstm" },
+  { id: "lstm_attention", label: "LSTM attention", type: "lstm" },
+  { id: "sk_model_rf", label: "SK random forest", type: "sklearn" },
+  { id: "sk_model_gb", label: "SK gradient boosting", type: "sklearn" },
 ];
 
 function MarketPriceChart({
@@ -137,6 +140,8 @@ export function MarketPredictPanel({ onBack }: MarketPredictPanelProps) {
   const [predictResult, setPredictResult] = useState<PredictResult | null>(
     null,
   );
+  const [modelOptions, setModelOptions] =
+    useState<ModelInfo[]>(FALLBACK_MODELS);
 
   const [timeframe, setTimeframe] = useState<ChartTimeframe>("1D");
   const [predictHorizon, setPredictHorizon] = useState<PredictHorizon>("1d");
@@ -149,6 +154,41 @@ export function MarketPredictPanel({ onBack }: MarketPredictPanelProps) {
     () => `chartFill-${selected?.slug ?? "empty"}`,
     [selected?.slug],
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadModels() {
+      try {
+        const res = await fetch("/api/models");
+        const data = (await res.json()) as { models?: ModelInfo[] };
+        const models = Array.isArray(data.models) ? data.models : [];
+        if (cancelled || models.length === 0) return;
+        setModelOptions(
+          models.map((m) => ({
+            id: String(m.id),
+            label: m.label ?? String(m.id),
+            available: m.available !== false,
+            type: m.type,
+            horizon: m.horizon,
+          })),
+        );
+      } catch {
+        if (!cancelled) setModelOptions(FALLBACK_MODELS);
+      }
+    }
+    loadModels();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!modelOptions.length) return;
+    const exists = modelOptions.some((m) => m.id === predictModel);
+    if (exists) return;
+    const available = modelOptions.find((m) => m.available !== false);
+    if (available) setPredictModel(available.id);
+  }, [modelOptions, predictModel]);
 
   useEffect(() => {
     let cancelled = false;
@@ -518,21 +558,23 @@ export function MarketPredictPanel({ onBack }: MarketPredictPanelProps) {
                 aria-label="Modelo"
               >
                 <span className={styles.horizonPickerLabel}>Modelo</span>
-                {MODEL_OPTIONS.map((m) => (
+                {modelOptions.map((m) => (
                   <button
                     key={m.id}
                     type="button"
                     className={`${styles.horizonBtn}${
                       predictModel === m.id ? ` ${styles.horizonBtnActive}` : ""
                     }`}
-                    disabled={!selected || predictLoading}
+                    disabled={
+                      !selected || predictLoading || m.available === false
+                    }
                     onClick={() => {
                       setPredictModel(m.id);
                       setPredictResult(null);
                       setPredictError(null);
                     }}
                   >
-                    {m.label}
+                    {m.label ?? m.id}
                   </button>
                 ))}
               </div>
@@ -635,7 +677,7 @@ function PredictionSummary({ result }: { result: PredictResult }) {
         </div>
         <div>
           <dt>Modelo</dt>
-          <dd>{result.model ?? "—"}</dd>
+          <dd>{result.model_label ?? result.model ?? "-"}</dd>
         </div>
         <div>
           <dt>Datos usados</dt>
