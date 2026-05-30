@@ -1,116 +1,90 @@
 # Predikt
 
-Sistema de predicción de movimientos en mercados de predicción descentralizados (Polymarket)
-usando señales endógenas de precios y features técnicas.
+Market prediction demo with a FastAPI inference backend and a Next.js frontend.
 
-## Estructura del proyecto
+## Requirements
 
-```
-predikt/
-├── raw/               # CSV de precios (prices_*.csv) y catálogo
-├── processed/         # Reportes, matriz de entrenamiento, modelos .pkl
-├── scripts/
-│   ├── 01_validate_dataset.py
-│   └── 02_train_baseline.py
-├── notebooks/
-│   ├── 01_data_collection.ipynb   # Descarga Polymarket (Gamma + CLOB)
-│   ├── 02_eda.ipynb               # Análisis exploratorio
-│   ├── 03_feature_engineering.ipynb  # Construcción de features
-│   └── 04_baseline_model.ipynb    # Modelos clásicos de ML + calibración
-├── src/
-│   ├── polymarket.py   # Cliente Polymarket API (Gamma + CLOB)
-│   └── features.py     # Ingeniería de características
-└── requirements.txt
-```
+- Python 3.10+
+- Node.js 18+ and pnpm (or npm)
 
-## Setup
+## Backend (FastAPI)
 
-```powershell
-# Crear y activar entorno virtual
+From the repo root:
+
+```bash
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-
-# Instalar dependencias
+# Windows PowerShell
+\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 
-# Registrar kernel Jupyter
-python -m ipykernel install --user --name predikt --display-name "Python 3 (predikt)"
+uvicorn backend.main:app --reload
 ```
 
-## Inferencia local (web + modelo entrenado)
+Optional environment variable for model location (defaults to data/processed):
 
-Entrena modelos con barras **diarias** (única resolución fiable en CLOB):
-
-```powershell
-python scripts/04_train_horizons.py --horizons 1d 1w
+```bash
+# Windows PowerShell
+$env:MODEL_DIR="C:\path\to\models"
 ```
 
-Salida: `processed/models/horizon_1d.pkl`, `horizon_1w.pkl`.
+The backend exposes:
 
-En la app: horizonte **1 día** o **1 semana** (los datos de entrenamiento son diarios; no hay historial fiable por debajo de 24 h).
+- GET /models
+- POST /predict?model=...
 
-## Pipeline ML (scripts)
+## Frontend (Next.js)
 
-Desde la raíz del repo, con el entorno activado:
+From the app folder:
 
-```powershell
-# Paso 1 — validar CSV en raw/ (mín. 30 precios por mercado)
-python scripts/01_validate_dataset.py
-
-# Paso 2 — baseline logístico únicamente
-python scripts/02_train_baseline.py
-
-# Paso 2b — comparar LR, Random Forest, Gradient Boosting, XGBoost
-pip install xgboost
-python scripts/03_compare_models.py --tune-threshold
+```bash
+cd app
+pnpm install
+pnpm dev
 ```
 
-Salidas en `processed/`:
+Open http://localhost:3000.
 
-| Archivo | Descripción |
-| ------- | ----------- |
-| `dataset_validation_report.csv` | Cobertura y elegibilidad por mercado |
-| `eligible_slugs.json` | Slugs usados para entrenar |
-| `train_matrix.csv` | Panel día × mercado con features |
-| `models/baseline_v1.pkl` | Pipeline StandardScaler + LogisticRegression |
-| `models/metrics.json` | Métricas en test (split temporal por mercado) |
+Create app/.env.local if you want to call the backend:
 
-Opciones: `--min-prices 30`, `--require-closed` (solo slugs con `endDate` pasado en el catálogo).
+```bash
+INFERENCE_API_URL=http://localhost:8000/predict
+```
 
-## Ejecución (notebooks)
+## Generate models
 
-Abrir los notebooks en Jupyter y ejecutar en orden con el kernel **Python 3 (predikt)**:
+## Load dataset
 
-1. `01_data_collection.ipynb` — descarga precios de Polymarket
-2. `02_eda.ipynb` — visualización y análisis exploratorio
-3. `03_feature_engineering.ipynb` — construcción de la matriz de features
-4. `04_baseline_model.ipynb` — entrenamiento y comparación de modelos baseline
-5. `deep-learning/05_lstm_baseline.ipynb` — baseline LSTM con features de precio
-6. `Notebook_ML.ipynb` — visualización del pipeline ML (métricas, modelos, confusion matrices)
+Primary (recommended): download the prepared dataset from Google Drive and extract into `data/raw`:
 
-## Fuentes de datos
+1. Open the folder in your browser: https://drive.google.com/drive/folders/1aZKLhm752pbeKUIG_efxDsdaC2HwJaCw?usp=sharing
+2. Download the folder as a ZIP and extract so the CSV files land under `data/raw/` (you should end up with `data/raw/prices_*.csv` and `data/raw/markets_catalog.csv`).
 
-| Dataset            | Fuente                                 | Acceso            |
-| ------------------ | -------------------------------------- | ----------------- |
-| Precios Polymarket | CLOB API (`clob.polymarket.com`)       | Público, sin auth |
-| Lista de mercados  | Gamma API (`gamma-api.polymarket.com`) | Público, sin auth |
+Alternative: use the Polymarket collector to fetch fresh data into `data/raw`:
 
-## Modelos implementados
+```bash
+python scripts/collect_polymarket.py --target 500 --min-volume 1000
+```
 
-### Avance actual (Classical ML)
+Either method produces the same required files: `data/raw/prices_*.csv` and `data/raw/markets_catalog.csv`.
 
-- **Baseline**: mayoría de clase
-- **Modelo 1**: Logistic Regression
-- **Modelo 2**: Random Forest (features de mercado)
-- **Modelo 3**: Gradient Boosting (features de mercado)
+### Sklearn (.pkl)
 
-### Siguiente avance (Deep Learning)
+Run the notebook at notebooks/Notebook_ML.ipynb. It produces sklearn bundles like:
 
-- LSTM baseline sobre series de precios (ver notebook 05)
-- Temporal Fusion Transformer (`pytorch-forecasting`) para la serie temporal
+- horizon_1d.pkl
+- horizon_1w.pkl
+- best_model.pkl
+- baseline_v1.pkl
+- model_RandomForest.pkl
+- model_GradientBoosting.pkl
 
-## Métricas de evaluación
+Place the .pkl files under data/processed (or set MODEL_DIR to their folder).
 
-- Accuracy, Precision, Recall, F1-score (macro y weighted)
-- Brier Score (calibración)
-- Calibración de probabilidades: Isotonic Regression
+### LSTM (.pt)
+
+Run the notebooks:
+
+- notebooks/deep-learning/05_lstm_baseline.ipynb
+- notebooks/deep-learning/lstm_atention.ipynb
+
+They save lstm_baseline.pt and lstm_attention.pt under data/processed by default.
