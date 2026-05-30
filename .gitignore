@@ -208,3 +208,5 @@ processed/
 !processed/.gitkeep
 
 /scripts
+
+!app/src/lib
