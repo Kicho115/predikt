@@ -1,0 +1,403 @@
+================================================================================
+  PREDIKT — RESUMEN COMPLETO DEL TRABAJO DE MACHINE LEARNING
+  Documento de estudio para exposición
+  Proyecto: Predicción de movimientos en mercados Polymarket
+================================================================================
+
+
+1. ¿QUÉ ES EL PROYECTO?
+--------------------------------------------------------------------------------
+
+Predikt es un sistema que intenta predecir si el precio de un mercado de
+predicción (Polymarket) subirá o bajará en el futuro cercano, usando únicamente
+señales derivadas del historial de precios (enfoque endógeno: no usamos noticias,
+redes sociales ni datos externos en el modelo clásico).
+
+El flujo completo es:
+
+  Polymarket (APIs)  →  datos en CSV  →  features técnicas  →  modelo ML
+       →  probabilidad "sube/baja"  →  app web (Predikt Now)
+
+Plataforma de datos: Polymarket (mercados binarios YES/NO sobre eventos reales).
+
+
+2. PROBLEMA DE MACHINE LEARNING (FORMULACIÓN)
+--------------------------------------------------------------------------------
+
+Tipo de problema: CLASIFICACIÓN BINARIA supervisada.
+
+  - Clase 0 ("down"): el precio NO sube en el horizonte elegido.
+  - Clase 1 ("up"):   el precio SÍ sube en el horizonte elegido.
+
+Variable objetivo (label):
+  label = 1  si  precio_futuro > precio_actual
+  label = 0  en caso contrario
+
+Horizontes implementados (barras diarias):
+
+  - 1d: predecir el movimiento del PRÓXIMO DÍA (1 paso adelante).
+  - 1w: predecir el movimiento dentro de 7 DÍAS (7 pasos adelante).
+
+Salida del modelo en producción:
+  - Probabilidad de "up" (entre 0 y 1).
+  - Dirección final: "up" o "down" según un umbral de probabilidad.
+  - Umbral optimizado en validación (no siempre 0.5).
+
+
+3. FUENTES DE DATOS
+--------------------------------------------------------------------------------
+
+Dos APIs públicas de Polymarket (sin autenticación):
+
+  a) Gamma API (gamma-api.polymarket.com)
+     - Catálogo de mercados: slug, pregunta, volumen, fechas, clobTokenIds.
+     - Archivo local: raw/markets_catalog.csv
+
+  b) CLOB API (clob.polymarket.com)
+     - Historial de precios del token YES.
+     - Resolución usada: barras DIARIAS (fidelity=1440 minutos).
+     - Un archivo por mercado: raw/prices_{slug}.csv
+       Columnas típicas: date, price, slug, question
+
+Cifras actuales del dataset:
+  - ~500 archivos CSV de precios descargados.
+  - 335 mercados ELEGIBLES para entrenar (mínimo 30 precios diarios).
+  - 165 mercados excluidos por historial insuficiente.
+  - Matriz de entrenamiento: 26.359 filas (día × mercado con features).
+  - ~20,8 % de las filas tienen label "up" (clase minoritaria).
+  - Rango temporal aproximado: marzo 2023 — abril 2026.
+
+
+4. PIPELINE DE DATOS (PASO A PASO)
+--------------------------------------------------------------------------------
+
+Paso 1 — Validación (equivalente a scripts/01_validate_dataset.py)
+  - Recorre todos los prices_*.csv en raw/.
+  - Cuenta precios, fechas únicas, duplicados, fechas de inicio/fin.
+  - Cruza con el catálogo para saber si el mercado está cerrado.
+  - Marca "eligible" si n_prices >= 30 (configurable).
+  - Salidas: processed/dataset_validation_report.csv
+             processed/eligible_slugs.json
+
+Paso 2 — Ingeniería de características (src/features.py)
+  Para cada mercado, ordenado por fecha, se calculan features técnicas:
+
+  | Feature    | Significado (intuición)                              |
+  |------------|------------------------------------------------------|
+  | ret_1d     | Retorno logarítmico vs. 1 barra atrás (1 día)       |
+  | ret_3d     | Retorno log vs. 3 barras atrás                       |
+  | ret_7d     | Retorno log vs. 7 barras atrás                       |
+  | ma7        | Media móvil simple de 7 días del precio              |
+  | ma14       | Media móvil simple de 14 días                        |
+  | ma_ratio   | ma7 / ma14 (momentum relativo)                       |
+  | vol7       | Volatilidad (desv. estándar de ret_1d en 7 días)    |
+  | price      | Precio actual del YES (probabilidad implícita 0–1)   |
+
+  Luego se genera el label con build_labels(): compara precio futuro vs. actual.
+
+Paso 3 — Matriz panel (src/dataset.py)
+  - Se apilan todos los mercados elegibles en un solo DataFrame.
+  - Cada fila = un día de un mercado con sus 8 features + label + slug.
+  - Salida: processed/train_matrix.csv
+
+Paso 4 — División train / test TEMPORAL (sin mezclar el futuro)
+  - 70 % train / 30 % test POR CADA MERCADO (no shuffle global).
+  - Los primeros días de cada serie → entrenamiento.
+  - Los últimos días → test.
+  - Esto evita "fuga de información" (data leakage): nunca entrenamos con
+    fechas posteriores a las que evaluamos en ese mercado.
+
+  Cifras en test (horizonte 1d):
+  - Train: 18.302 filas | Test: 8.057 filas
+  - En test: ~6.284 "down" vs. ~1.773 "up" (fuerte desbalanceo)
+
+
+5. MODELOS ENTRENADOS (ML CLÁSICO)
+--------------------------------------------------------------------------------
+
+Se compararon cuatro algoritmos de scikit-learn / XGBoost (src/models.py):
+
+  1. Logistic Regression
+     - Pipeline: StandardScaler + LogisticRegression
+     - class_weight="balanced" para compensar desbalanceo
+
+  2. Random Forest
+     - 300 árboles, max_depth=12, class_weight balanced
+
+  3. Gradient Boosting (GANADOR por accuracy en test 1d)
+     - 200 estimadores, learning_rate=0.05
+
+  4. XGBoost
+     - scale_pos_weight ajustado según ratio neg/pos en train
+
+Optimización del umbral:
+  - En un subconjunto de validación (último 15 % del train),
+    se busca el umbral de probabilidad entre 0.25 y 0.75 que maximiza
+    accuracy (o balanced_accuracy si se configura así).
+  - Ejemplo: Gradient Boosting usa umbral 0.53, no 0.5.
+
+
+6. RESULTADOS — HORIZONTE 1 DÍA (lo más importante para la exposición)
+--------------------------------------------------------------------------------
+
+Baseline de referencia: "siempre predecir down"
+  - Accuracy test: 78,0 %  (porque ~78 % de los días realmente bajan o no suben)
+  - Balanced accuracy: 50 % (no discrimina nada)
+  - Recall de "up": 0 % (nunca acierta subidas)
+
+Comparación de modelos en TEST (horizonte 1d, métricas en metrics.json):
+
+  Modelo               | Accuracy | Balanced acc. | F1 macro | Brier score
+  ---------------------|----------|---------------|----------|------------
+  Majority (siempre ↓)  |  0.780   |    0.500      |  0.438   |     —
+  Logistic Regression  |  0.775   |    0.500      |  0.445   |  0.249
+  Random Forest        |  0.778   |    0.502      |  0.446   |  0.210
+  Gradient Boosting ★  |  0.780   |    0.504      |  0.449   |  0.164
+  XGBoost              |  0.774   |    0.511      |  0.474   |  0.209
+
+  ★ Modelo seleccionado como "best" por accuracy (criterio por defecto).
+
+Matriz de confusión — Gradient Boosting (test, 1d):
+                    Predicho
+                 down      up
+  Real down     6262      22
+  Real up       1753      20
+
+Interpretación CRÍTICA para la exposición:
+  - La accuracy (~78 %) es CASI IGUAL al baseline de mayoría.
+  - El modelo apenas predice "up" (solo 42 predicciones up de 1773 reales).
+  - Precision de "up" ~48 % pero recall de "up" ~1 %.
+  - Conclusión honesta: con solo precios históricos, el modelo clásico
+    NO supera de forma útil al "siempre baja" en accuracy bruta.
+  - Métricas más honestas con desbalanceo: balanced_accuracy, F1 macro,
+    matriz de confusión, Brier score (calibración de probabilidades).
+  - Brier score más bajo en Gradient Boosting (0.164) → mejores probabilidades
+    calibradas, aunque la decisión binaria sigue siendo conservadora.
+
+Archivos de modelos guardados:
+  - processed/models/baseline_v1.pkl
+  - processed/models/best_model.pkl
+  - processed/models/horizon_1d.pkl
+  - processed/models/horizon_1w.pkl
+  - processed/models/metrics.json
+  - processed/models/model_comparison.json
+  - processed/models/feature_config.json
+  - processed/models/horizons_registry.json
+
+
+7. RESULTADOS — HORIZONTE 1 SEMANA
+--------------------------------------------------------------------------------
+
+Con label a 7 días, el problema es más difícil y el desbalanceo se manifiesta
+de otra forma (horizons_registry.json):
+
+  Horizonte 1w en test:
+  - Accuracy: 44,5 % (peor que adivinar al azar en términos brutos)
+  - Balanced accuracy: 57,4 %
+  - F1 macro: 44,1 %
+  - Umbral óptimo: 0.29 (muy bajo → el modelo tiende a predecir más "up")
+  - Matriz: muchos "down" reales clasificados como "up" (4125 falsos positivos)
+
+Lección: un horizonte más largo cambia la distribución del label y exige
+métricas y umbrales distintos; no se puede comparar directamente con 1d.
+
+
+8. ANÁLISIS EXPLORATORIO (EDA)
+--------------------------------------------------------------------------------
+
+Notebooks:
+  - notebooks/eda.ipynb — cobertura de datos, duplicados, distribuciones de
+    precios y retornos, volatilidad, autocorrelación, relación features-label.
+  - notebooks/Notebook_ML.ipynb — recorre TODO el pipeline con gráficos:
+    validación, matriz de features, split temporal, comparación de modelos,
+    matrices de confusión, importancia de variables, regresión logística con
+    statsmodels para interpretar coeficientes.
+
+Hallazgos típicos de EDA en mercados de predicción:
+  - Precios acotados entre 0 y 1 (son probabilidades implícitas).
+  - Series muy persistentes (si hoy está alto, mañana suele seguir alto).
+  - Pocos movimientos fuertes; muchos días con cambios pequeños.
+  - Clase "up" minoritaria (~21 % en la matriz global).
+
+
+9. DEEP LEARNING (TRABAJO EXPLORATORIO)
+--------------------------------------------------------------------------------
+
+Notebooks en notebooks/deep-learning/:
+
+  - 05_lstm_baseline.ipynb
+    Red LSTM en PyTorch con ventanas temporales de features.
+    Misma etiqueta binaria. Split temporal por mercado.
+    StandardScaler solo en train. Secuencias no cruzan entre mercados.
+
+  - lstm_atention.ipynb
+    Variante con mecanismo de atención sobre la secuencia.
+
+Dependencias: torch, pytorch-lightning, pytorch-forecasting (requirements.txt).
+
+Estado: investigación / baseline; el modelo en producción web usa ML clásico
+(Gradient Boosting en horizon_1d.pkl o best_model.pkl).
+
+Próximo paso planificado (README): Temporal Fusion Transformer para series.
+
+
+10. INFERENCIA EN PRODUCCIÓN (CÓMO LLEGA A LA WEB)
+--------------------------------------------------------------------------------
+
+Módulo Python: src/inference.py
+
+  1. Carga el bundle del modelo (.pkl con joblib): estimador + umbral +
+     lista de features + nombre del modelo.
+  2. Descarga precios diarios en vivo del CLOB para el token YES del mercado.
+  3. Calcula las 8 features en la última barra disponible.
+  4. predict_proba → probabilidad de subida.
+  5. Si proba >= umbral → "up", si no → "down".
+
+App Next.js (carpeta app/):
+  - GET /api/markets — mercados activos desde Gamma.
+  - GET /api/price-history — gráfico de precios desde CLOB.
+  - POST /api/predict — ejecuta inferencia local (spawn de Python con el repo)
+    o hace proxy a un servicio externo si INFERENCE_API_URL está configurado.
+
+Requisitos para predecir:
+  - Mínimo 30 barras diarias para horizonte 1d (45 para 1w).
+  - Modelo entrenado presente en processed/models/.
+
+
+11. ESTRUCTURA DEL CÓDIGO REUTILIZABLE
+--------------------------------------------------------------------------------
+
+  src/
+    polymarket.py   — cliente HTTP Gamma + CLOB
+    features.py     — retornos, medias móviles, volatilidad, labels
+    dataset.py      — carga CSV, validación, matriz panel, split
+    models.py       — factories de clasificadores
+    training.py     — métricas, baseline mayoría, búsqueda de umbral
+    horizons.py     — definición 1d / 1w
+    inference.py    — predicción en un mercado concreto
+    paths.py        — rutas RAW_DIR, PROCESSED_DIR, MODELS_DIR
+
+  processed/
+    train_matrix.csv, eligible_slugs.json, models/*.pkl, *.json
+
+  notebooks/
+    Notebook_ML.ipynb, eda.ipynb, deep-learning/*.ipynb
+
+
+12. MÉTRICAS — QUÉ DECIR EN LA EXPOSICIÓN
+--------------------------------------------------------------------------------
+
+Accuracy:
+  Proporción de aciertos totales. EN DATOS DESBALANCEADOS puede engañar:
+  un modelo que siempre dice "down" ya tiene ~78 % accuracy.
+
+Balanced accuracy:
+  Promedio de recall por clase. Penaliza ignorar la clase minoritaria.
+  Nuestros modelos ~0.50–0.51 → apenas mejor que adivinar equilibrado.
+
+Precision / Recall / F1:
+  - Precision "up": de los que predijimos up, cuántos acertaron.
+  - Recall "up": de los up reales, cuántos detectamos (muy bajo aquí).
+  - F1 macro: media armónica entre clases; útil con desbalanceo.
+
+Brier score:
+  Mide calidad de las probabilidades (0 = perfecto, 0.25 = aleatorio en binario).
+  Gradient Boosting: 0.164 en test 1d → mejor calibración entre los comparados.
+
+Matriz de confusión:
+  Tabla visual de aciertos y errores por clase. Imprescindible mostrarla.
+
+
+13. LIMITACIONES Y TRABAJO FUTURO (transparencia académica)
+--------------------------------------------------------------------------------
+
+Limitaciones actuales:
+  - Solo features de precio (no volumen de libro, noticias, categoría del evento).
+  - Mercados muy correlacionados (política, crypto) mezclados en un solo modelo.
+  - Desbalanceo fuerte: difícil predecir subidas raras.
+  - Accuracy casi igual al baseline; valor real limitado para trading automático
+    sin más señales o redefinir el objetivo (ej. movimiento > X %).
+  - Datos diarios: no hay predicción intradía fiable con la API usada.
+
+Mejoras posibles:
+  - Entrenar por categoría de mercado o embeddings del texto de la pregunta.
+  - Usar balanced_accuracy o F1 para elegir el mejor modelo, no solo accuracy.
+  - SMOTE, cost-sensitive learning, o umbrales por mercado.
+  - LSTM / TFT con secuencias multivariadas.
+  - Validación cruzada temporal (walk-forward) más rigurosa.
+  - Calibración explícita (Isotonic Regression) post-modelo.
+
+
+14. GUION SUGERIDO PARA LA EXPOSICIÓN (5–10 minutos)
+--------------------------------------------------------------------------------
+
+  [1 min] Contexto
+    "Polymarket es un mercado de predicción donde el precio YES representa la
+     probabilidad implícita de que ocurra un evento. Queremos anticipar si ese
+     precio subirá o bajará mañana (o en una semana)."
+
+  [2 min] Datos y pipeline
+    "Descargamos ~500 mercados, filtramos 335 con historial suficiente, calculamos
+     8 indicadores técnicos por día y etiquetamos up/down según el precio futuro.
+     Partimos el tiempo 70/30 por mercado sin mezclar el futuro en el entrenamiento."
+
+  [2 min] Modelos y resultados
+    "Comparamos regresión logística, random forest, gradient boosting y XGBoost.
+     Gradient boosting ganó por accuracy (~78 %) y mejor Brier score, pero hay que
+     ver la matriz de confusión: casi nunca predice subidas. El baseline 'siempre down'
+     ya da 78 % de accuracy."
+
+  [1 min] Demo / producto
+    "La app Predikt Now carga el modelo .pkl, pide precios al CLOB y devuelve
+     probabilidad y dirección para el mercado que el usuario elige."
+
+  [1 min] Conclusión honesta
+    "Demostramos un pipeline ML completo de punta a punta. La señal solo con precios
+     es débil para clasificación binaria diaria; las métricas de balance y calibración
+     son más informativas que la accuracy. El trabajo abre la puerta a deep learning
+     y features externas."
+
+
+15. COMANDOS ÚTILES PARA DEMOSTRAR EN VIVO
+--------------------------------------------------------------------------------
+
+  # Activar entorno
+  .\.venv\Scripts\Activate.ps1
+
+  # Validar datos
+  python scripts/01_validate_dataset.py
+
+  # Entrenar baseline logístico
+  python scripts/02_train_baseline.py
+
+  # Comparar todos los modelos
+  python scripts/03_compare_models.py --tune-threshold
+
+  # Entrenar por horizonte 1d y 1w
+  python scripts/04_train_horizons.py --horizons 1d 1w
+
+  # Abrir notebook visual
+  jupyter notebook notebooks/Notebook_ML.ipynb
+
+  # App web
+  cd app
+  pnpm dev
+
+
+16. GLOSARIO RÁPIDO
+--------------------------------------------------------------------------------
+
+  Polymarket / CLOB / Gamma API — plataforma y APIs de datos.
+  YES token — contrato que paga si el evento ocurre; su precio ≈ probabilidad.
+  Slug — identificador único del mercado en la URL.
+  Feature — variable de entrada calculada a partir del precio.
+  Label — respuesta correcta (up/down) que el modelo debe aprender.
+  Train / test temporal — entrenar con el pasado, evaluar con el futuro.
+  Umbral — corte de probabilidad para decidir la clase (no siempre 0.5).
+  .pkl — archivo serializado del modelo entrenado (joblib).
+  Endógeno — señales que salen solo del precio, sin datos externos.
+
+
+================================================================================
+  Fin del documento. Revisa notebooks/Notebook_ML.ipynb para gráficos en vivo.
+================================================================================
